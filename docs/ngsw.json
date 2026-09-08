@@ -1,0 +1,95 @@
+{
+  "configVersion": 1,
+  "timestamp": 1788867641098,
+  "index": "/SparrowFi2/index.html",
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/SparrowFi2/chunk-31XrtBr1.js",
+        "/SparrowFi2/chunk-7F9wPCIY.js",
+        "/SparrowFi2/chunk-Bw9WTPC_.js",
+        "/SparrowFi2/chunk-C7E5rHBI.js",
+        "/SparrowFi2/chunk-CuqCba7M.js",
+        "/SparrowFi2/chunk-DNpeEk62.js",
+        "/SparrowFi2/chunk-LXv0-pRF.js",
+        "/SparrowFi2/chunk-vVTwJVUR.js",
+        "/SparrowFi2/favicon.ico",
+        "/SparrowFi2/index.html",
+        "/SparrowFi2/main-2VPUVRGD.js",
+        "/SparrowFi2/manifest.webmanifest",
+        "/SparrowFi2/styles-ZWCMGFE7.css"
+      ],
+      "patterns": []
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/SparrowFi2/apple-touch-icon.png",
+        "/SparrowFi2/icons/icon-128x128.png",
+        "/SparrowFi2/icons/icon-144x144.png",
+        "/SparrowFi2/icons/icon-152x152.png",
+        "/SparrowFi2/icons/icon-192x192.png",
+        "/SparrowFi2/icons/icon-384x384.png",
+        "/SparrowFi2/icons/icon-512x512.png",
+        "/SparrowFi2/icons/icon-72x72.png",
+        "/SparrowFi2/icons/icon-96x96.png"
+      ],
+      "patterns": []
+    }
+  ],
+  "dataGroups": [],
+  "hashTable": {
+    "/SparrowFi2/apple-touch-icon.png": "d6490ba7c6e67a3fa8022a12ea7082878c624c58",
+    "/SparrowFi2/chunk-31XrtBr1.js": "160d94159feb9e502b4a18f5d83f17614bdbc861",
+    "/SparrowFi2/chunk-7F9wPCIY.js": "114db4a01874deeb620780a4d6200c1f65044527",
+    "/SparrowFi2/chunk-Bw9WTPC_.js": "be92abe4a2f48de4441e60dfa6b0f939f6d3b860",
+    "/SparrowFi2/chunk-C7E5rHBI.js": "08b6d9b07004d47080217b7d632e0f3a0834d297",
+    "/SparrowFi2/chunk-CuqCba7M.js": "6637420a2c12cf84fd8399d8044deffa3bcc3c53",
+    "/SparrowFi2/chunk-DNpeEk62.js": "7899462d41c41891188cbea87210a536b5b46af8",
+    "/SparrowFi2/chunk-LXv0-pRF.js": "f7b4910234d50740bc8cfbf22b09ff9b9003f3db",
+    "/SparrowFi2/chunk-vVTwJVUR.js": "d0b5bf789a1ee1756c15f9c0f399b04536c15a6d",
+    "/SparrowFi2/favicon.ico": "96ce9f7a998aa5fd06cc27816c44b4242f03261a",
+    "/SparrowFi2/icons/icon-128x128.png": "3fe22b5fcf114408a1ca8742974084138c40f3a8",
+    "/SparrowFi2/icons/icon-144x144.png": "00e19d1224177bceab49ad1f6d3fbe3e560191ef",
+    "/SparrowFi2/icons/icon-152x152.png": "e9f8e6cb58722636c42b6757289a82a0927b96a7",
+    "/SparrowFi2/icons/icon-192x192.png": "3cbf723e2f8fc3242ff6dc6190c8564ee19f489d",
+    "/SparrowFi2/icons/icon-384x384.png": "1426119dc0d87660b5e60a146437b09285c260b4",
+    "/SparrowFi2/icons/icon-512x512.png": "49fa0a9baa9a80b0c687906755aff646ce344eee",
+    "/SparrowFi2/icons/icon-72x72.png": "75253e6b96d3fecdd12a6d072e170dfe036d5431",
+    "/SparrowFi2/icons/icon-96x96.png": "6a5e3b80e875907db2af5d7b242861a51a4dc9d7",
+    "/SparrowFi2/index.html": "3e2b83d3277cc0e4f1592d04bec92ce7860c9229",
+    "/SparrowFi2/main-2VPUVRGD.js": "a030e72eda7536d0a5da56557bf933d751caa293",
+    "/SparrowFi2/manifest.webmanifest": "4b3f3847350682541bb81817191721a09f6261d3",
+    "/SparrowFi2/styles-ZWCMGFE7.css": "b8b2b961907c6320666dc68bbdd71e46c994db81"
+  },
+  "navigationUrls": [
+    {
+      "positive": true,
+      "regex": "^\\/.*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*\\.[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*\\/.*$"
+    }
+  ],
+  "navigationRequestStrategy": "performance"
+}
