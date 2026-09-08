@@ -1,0 +1,61 @@
+name: Deploy to GitHub Pages (docs/)
+
+# Builds the Angular app and publishes the compiled output into the /docs
+# folder on this branch, which GitHub Pages is configured to serve from
+# (Settings -> Pages -> Source: "Deploy from a branch", Branch: main /docs).
+# No secrets or backend involved: this only builds static client-side
+# assets and never touches user data (SparrowFi never has any server-side
+# component - .spw files stay entirely on the user's own device).
+
+"on":
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-docs
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npx ng test
+
+      - name: Build for GitHub Pages
+        run: npx ng build --configuration production,github-pages
+
+      - name: Publish build output into docs/
+        run: |
+          rm -rf docs
+          mkdir -p docs
+          cp -r dist/SparrowFi/browser/. docs/
+          touch docs/.nojekyll
+
+      - name: Commit and push docs/ if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "No changes to docs/ - nothing to publish."
+          else
+            git commit -m "chore: publish build to docs/ [skip ci]"
+            git push
+          fi

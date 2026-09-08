@@ -52,6 +52,9 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "github-pages": {
+              "baseHref": "/SparrowFi2/"
             }
           },
           "defaultConfiguration": "production"
