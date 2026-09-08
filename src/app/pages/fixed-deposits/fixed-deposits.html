@@ -1,0 +1,124 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Fixed Deposits</h1>
+    <button type="button" class="btn btn-primary" (click)="openAdd()" [disabled]="banks().length === 0">
+      <sf-icon name="plus" [size]="16" /> Add
+    </button>
+  </div>
+
+  @if (banks().length === 0) {
+    <div class="banner banner-info">
+      <sf-icon name="info" [size]="16" />
+      <span>Add a bank account first, then you can record fixed deposits against it.</span>
+    </div>
+  }
+
+  @if (deposits().length === 0) {
+    <div class="empty-state card">
+      <sf-icon name="layers" [size]="28" />
+      <p>No fixed deposits recorded yet.</p>
+    </div>
+  } @else {
+    <div class="stack">
+      @for (fd of deposits(); track fd.id) {
+        <div class="card fd-card">
+          <div class="fd-head" (click)="openEdit(fd)">
+            <div>
+              <div class="fd-bank">{{ bankName(fd.bankId) }}</div>
+              <div class="muted small">{{ fd.startDate }} → {{ maturityDate(fd) }}</div>
+            </div>
+            <span class="status-badge" [class]="'status-' + fd.status">{{ fd.status }}</span>
+          </div>
+          <div class="fd-body" (click)="openEdit(fd)">
+            <div>
+              <div class="muted small">Principal</div>
+              <div class="fd-value">{{ money(fd.amount) }}</div>
+            </div>
+            <div>
+              <div class="muted small">{{ fd.percentage }}% · {{ fd.months }}mo</div>
+              <div class="fd-value">{{ money(maturityValue(fd)) }}</div>
+            </div>
+          </div>
+          <div class="fd-actions">
+            @if (fd.status === 'active') {
+              <button type="button" class="btn btn-secondary" (click)="markMatured(fd)">Mark Matured</button>
+            }
+            @if (fd.status === 'matured') {
+              <button type="button" class="btn btn-secondary" (click)="markWithdrawn(fd)">Mark Withdrawn</button>
+            }
+            <button type="button" class="btn btn-danger" (click)="remove(fd.id)">Delete</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit Fixed Deposit' : 'Add Fixed Deposit'" (close)="showModal.set(false)">
+    <div class="field-row">
+      <label>
+        Bank
+        <select
+          [ngModel]="form().bankId"
+          (ngModelChange)="form.update((f) => ({ ...f, bankId: $event }))"
+        >
+          @for (b of banks(); track b.id) {
+            <option [value]="b.id">{{ b.name }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Amount
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="form().amount"
+          (ngModelChange)="form.update((f) => ({ ...f, amount: $event }))"
+        />
+      </label>
+      <label>
+        Interest rate (% per annum)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="form().percentage"
+          (ngModelChange)="form.update((f) => ({ ...f, percentage: $event }))"
+        />
+      </label>
+      <label>
+        Tenure (months)
+        <input
+          type="number"
+          min="1"
+          step="1"
+          [ngModel]="form().months"
+          (ngModelChange)="form.update((f) => ({ ...f, months: $event }))"
+        />
+      </label>
+      <label>
+        Start date
+        <input
+          type="date"
+          [ngModel]="form().startDate"
+          (ngModelChange)="form.update((f) => ({ ...f, startDate: $event }))"
+        />
+      </label>
+      <label>
+        Proceeds destination bank (optional)
+        <select
+          [ngModel]="form().toBankId"
+          (ngModelChange)="form.update((f) => ({ ...f, toBankId: $event }))"
+        >
+          <option value="">Same bank</option>
+          @for (b of banks(); track b.id) {
+            <option [value]="b.id">{{ b.name }}</option>
+          }
+        </select>
+      </label>
+    </div>
+    <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}

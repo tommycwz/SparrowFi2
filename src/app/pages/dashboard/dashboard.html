@@ -1,0 +1,65 @@
+<div class="stack">
+  <section class="net-worth card">
+    <span class="muted">Net Worth</span>
+    <h1>{{ netWorthLabel() }}</h1>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Accounts</h2>
+      <a routerLink="/accounts" class="muted link">Manage</a>
+    </div>
+
+    @if (state.accountBalances().length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="wallet" [size]="28" />
+        <p>No accounts yet. Add a bank, wallet or card to start tracking balances.</p>
+        <a routerLink="/accounts" class="btn btn-primary">Add an Account</a>
+      </div>
+    } @else {
+      <div class="account-grid">
+        @for (a of state.accountBalances(); track a.kind + a.id) {
+          <div class="account-card card" [style.--dot]="a.color">
+            <div class="dot"></div>
+            <div class="acc-name">{{ a.name }}</div>
+            <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
+          </div>
+        }
+      </div>
+    }
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Recent Transactions</h2>
+      <a routerLink="/transactions" class="muted link">See all</a>
+    </div>
+
+    @if (recentTransactions().length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="list" [size]="28" />
+        <p>No transactions recorded yet.</p>
+        <a routerLink="/transactions" class="btn btn-primary">Add a Transaction</a>
+      </div>
+    } @else {
+      <div class="card tx-list">
+        @for (t of recentTransactions(); track t.id) {
+          <div class="tx-row">
+            <div class="tx-dot" [style.background]="categoryColor(t.categoryId)"></div>
+            <div class="tx-mid">
+              <div class="tx-cat">{{ categoryName(t.categoryId) }}</div>
+              <div class="tx-date muted">{{ t.date }}</div>
+            </div>
+            <div
+              class="tx-amount"
+              [class.positive]="t.type === 'income' || t.type === 'others-in'"
+              [class.negative]="t.type === 'expense' || t.type === 'others-out'"
+            >
+              {{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}{{ money(t.amount) }}
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </section>
+</div>

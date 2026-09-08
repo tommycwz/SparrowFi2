@@ -1,0 +1,41 @@
+SparrowFi - Default Categories
+================================
+These are the categories a brand-new file is seeded with (see
+src/app/core/default-categories.ts, which must be kept in sync with this
+list if it ever changes).
+
+Income
+------
+Salary
+Dividend Gain
+Investment Profit
+Rental Income
+Others (Income)
+
+Expenses
+--------
+Food and Drinks
+Grocery
+Bills and Utilities
+Petrol & Transport
+Toll
+Shopping
+Entertainment
+Health and Medical
+Travel
+Work Expenses
+Others (Expenses)
+
+Others In
+---------
+Transfer (In)
+Investment (In)
+Adjustment (In)
+
+Others Out
+----------
+Transfer (Out)
+Investment (Out)
+Bank Withdrawal
+Credit Card Payment
+Adjustment (Out)

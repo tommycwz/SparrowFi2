@@ -1,0 +1,78 @@
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-head h1 {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.small {
+  font-size: 0.75rem;
+}
+
+.fd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fd-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.fd-bank {
+  font-weight: 700;
+}
+
+.status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.status-active {
+  background: rgb(47 111 235 / 12%);
+  color: var(--accent);
+}
+
+.status-matured {
+  background: rgb(22 163 74 / 12%);
+  color: var(--success);
+}
+
+.status-withdrawn {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.fd-body {
+  display: flex;
+  gap: 2rem;
+  cursor: pointer;
+}
+
+.fd-value {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.fd-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}

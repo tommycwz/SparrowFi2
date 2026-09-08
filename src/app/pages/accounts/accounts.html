@@ -1,0 +1,56 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Accounts</h1>
+    <button type="button" class="btn btn-primary" (click)="openAdd()">
+      <sf-icon name="plus" [size]="16" /> Add
+    </button>
+  </div>
+
+  <div class="segmented">
+    <button type="button" [class.active]="tab() === 'bank'" (click)="tab.set('bank')">
+      <sf-icon name="bank" [size]="16" /> Banks
+    </button>
+    <button type="button" [class.active]="tab() === 'wallet'" (click)="tab.set('wallet')">
+      <sf-icon name="wallet" [size]="16" /> Wallets
+    </button>
+    <button type="button" [class.active]="tab() === 'card'" (click)="tab.set('card')">
+      <sf-icon name="card" [size]="16" /> Cards
+    </button>
+  </div>
+
+  @if (items().length === 0) {
+    <div class="empty-state card">
+      <sf-icon name="wallet" [size]="28" />
+      <p>No {{ tab() }}s yet.</p>
+    </div>
+  } @else {
+    <div class="stack">
+      @for (item of items(); track item.id) {
+        <div class="card row" (click)="openEdit(item)">
+          <div class="dot" [style.background]="item.color"></div>
+          <div class="name">{{ item.name }}</div>
+          <div class="balance" [class.negative]="item.balance < 0">{{ money(item.balance) }}</div>
+          <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(item.id)" aria-label="Delete">
+            <sf-icon name="trash" [size]="16" />
+          </button>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit' : 'Add ' + tab()" (close)="showModal.set(false)">
+    <div class="field-row">
+      <label>
+        Name
+        <input type="text" [ngModel]="name()" (ngModelChange)="name.set($event)" (keydown.enter)="save()" />
+      </label>
+      <label>
+        Color
+        <sf-color-picker [(value)]="color" />
+      </label>
+    </div>
+    <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}

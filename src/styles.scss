@@ -1,0 +1,220 @@
+/* SparrowFi global styles & design tokens.
+   Plain CSS custom properties (no external framework/CDN) so the whole
+   app bundles offline and works inside the PWA's cached shell. */
+
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --border: #e1e6ee;
+  --text: #10182a;
+  --text-muted: #6b7688;
+  --accent: #1d4ed8;
+  --accent-contrast: #ffffff;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --radius: 14px;
+  --shell-max-width: 1080px;
+  color-scheme: light;
+}
+
+/* Appearance: 'system' (no [data-theme] attribute) follows the OS/browser
+   preference below. An explicit choice made in Settings sets [data-theme]
+   on <html> (see ThemeService) and wins over the OS setting in both
+   directions - forcing dark even when the OS is light, and forcing light
+   even when the OS is dark (the `:not([data-theme='light'])` guard is what
+   stops the dark media query from re-overriding an explicit light choice). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0b0f19;
+    --surface: #131a2b;
+    --surface-2: #1b2436;
+    --border: #26314a;
+    --text: #eef2f9;
+    --text-muted: #94a1b8;
+    --accent: #2563eb;
+    --accent-contrast: #ffffff;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0b0f19;
+  --surface: #131a2b;
+  --surface-2: #1b2436;
+  --border: #26314a;
+  --text: #eef2f9;
+  --text-muted: #94a1b8;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: rgb(220 38 38 / 35%);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgb(220 38 38 / 10%);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--text-muted);
+}
+
+.banner {
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.banner-info {
+  background: rgb(47 111 235 / 10%);
+  color: var(--accent);
+}
+
+.banner-warning {
+  background: rgb(217 119 6 / 12%);
+  color: var(--warning);
+}
+
+.banner-danger {
+  background: rgb(220 38 38 / 10%);
+  color: var(--danger);
+}

@@ -1,0 +1,75 @@
+.launcher {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+h1 {
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.actions {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.privacy-note {
+  max-width: 380px;
+}
+
+.filename-input {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.filename-input input {
+  flex: 1;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.segmented button {
+  flex: 1;
+  padding: 0.5rem;
+  background: var(--surface-2);
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.segmented button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}

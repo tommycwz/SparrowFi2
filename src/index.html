@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SparrowFi</title>
+    <script>
+      // Apply a saved light/dark override before first paint so the app
+      // never flashes the wrong theme. Reads only a local UI preference
+      // (never financial data) and never touches the network. Mirrors
+      // ThemeService, which keeps this in sync while the app is running.
+      (function () {
+        try {
+          var v = localStorage.getItem('sparrowfi-theme');
+          if (v === 'light' || v === 'dark') {
+            document.documentElement.setAttribute('data-theme', v);
+          }
+        } catch (e) {
+          /* storage disabled - falls back to prefers-color-scheme */
+        }
+      })();
+    </script>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Personal finance tracker that runs entirely on your device - your .spw file never leaves it." />
+    <meta name="theme-color" content="#1d4ed8" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <!-- iOS home-screen / standalone-mode support -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="SparrowFi" />
+  </head>
+  <body>
+    <app-root></app-root>
+    <noscript>Please enable JavaScript to continue using this application.</noscript>
+  </body>
+</html>

@@ -1,0 +1,187 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Transactions</h1>
+    <button type="button" class="btn btn-primary" (click)="openAdd()">
+      <sf-icon name="plus" [size]="16" /> Add
+    </button>
+  </div>
+
+  <select
+    class="filter-select"
+    [ngModel]="filterAccount()"
+    (ngModelChange)="filterAccount.set($event)"
+  >
+    <option value="all">All accounts</option>
+    @for (o of filterOptions(); track o.value) {
+      <option [value]="o.value">{{ o.label }}</option>
+    }
+  </select>
+
+  <div class="month-nav">
+    <button
+      type="button"
+      class="month-nav-btn"
+      [disabled]="selectedMonth() === 'all'"
+      (click)="shiftMonth(-1)"
+      aria-label="Previous month"
+    >
+      <sf-icon name="chevron-left" [size]="18" />
+    </button>
+    <div class="month-label">{{ monthLabel() }}</div>
+    <button
+      type="button"
+      class="month-nav-btn"
+      [disabled]="selectedMonth() === 'all'"
+      (click)="shiftMonth(1)"
+      aria-label="Next month"
+    >
+      <sf-icon name="chevron-right" [size]="18" />
+    </button>
+    <button type="button" class="month-all-btn" (click)="toggleAllMonths()">
+      {{ selectedMonth() === 'all' ? 'This Month' : 'All' }}
+    </button>
+  </div>
+
+  <div class="swipe-area" (touchstart)="onTouchStart($event)" (touchend)="onTouchEnd($event)">
+    @if (transactions().length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="list" [size]="28" />
+        <p>No transactions match this filter.</p>
+      </div>
+    } @else {
+      <div class="card tx-list">
+        @for (t of transactions(); track t.id) {
+          <div class="tx-row" (click)="openEdit(t)">
+            <div class="tx-dot" [style.background]="categoryColor(t.categoryId)"></div>
+            <div class="tx-mid">
+              <div class="tx-cat">{{ categoryName(t.categoryId) }}</div>
+              <div class="tx-sub muted">
+                {{ t.date }}{{ t.time ? ' · ' + t.time : '' }} · {{ accountLabel(t) }}
+              </div>
+              @if (t.notes) {
+                <div class="tx-notes muted">{{ t.notes }}</div>
+              }
+            </div>
+            <div
+              class="tx-amount"
+              [class.positive]="t.type === 'income' || t.type === 'others-in'"
+              [class.negative]="t.type === 'expense' || t.type === 'others-out'"
+            >
+              {{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}{{ money(t.amount) }}
+            </div>
+            <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(t.id)" aria-label="Delete">
+              <sf-icon name="trash" [size]="16" />
+            </button>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit Transaction' : 'Add Transaction'" (close)="showModal.set(false)">
+    <div class="field-row">
+      <label>
+        Type
+        <select [ngModel]="form().type" (ngModelChange)="onTypeChange($event)">
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
+          <option value="others-in">Others (In)</option>
+          <option value="others-out">Others (Out)</option>
+        </select>
+      </label>
+
+      <label>
+        Amount
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="form().amount"
+          (ngModelChange)="form.update((f) => ({ ...f, amount: $event }))"
+        />
+      </label>
+
+      <label>
+        Date
+        <input
+          type="date"
+          [ngModel]="form().date"
+          (ngModelChange)="form.update((f) => ({ ...f, date: $event }))"
+        />
+      </label>
+
+      <label class="checkbox-row">
+        <input
+          type="checkbox"
+          [ngModel]="form().autoCaptureTime"
+          (ngModelChange)="form.update((f) => ({ ...f, autoCaptureTime: $event }))"
+        />
+        Auto capture time
+      </label>
+
+      @if (!form().autoCaptureTime) {
+        <label>
+          Time
+          <input
+            type="time"
+            [ngModel]="form().time"
+            (ngModelChange)="form.update((f) => ({ ...f, time: $event }))"
+          />
+        </label>
+      }
+
+      <label>
+        Account
+        <select [ngModel]="form().accountType" (ngModelChange)="onAccountTypeChange($event)">
+          <option value="bank">Bank</option>
+          <option value="wallet">Wallet</option>
+          <option value="card">Card</option>
+          <option value="cash">Cash</option>
+          <option value="others">Others</option>
+        </select>
+      </label>
+
+      @if (accountOptions().length > 0) {
+        <label>
+          Which {{ form().accountType }}
+          <select
+            [ngModel]="form().accountId"
+            (ngModelChange)="form.update((f) => ({ ...f, accountId: $event }))"
+          >
+            <option value="">Select…</option>
+            @for (a of accountOptions(); track a.id) {
+              <option [value]="a.id">{{ a.name }}</option>
+            }
+          </select>
+        </label>
+      }
+
+      <label>
+        Category
+        <select
+          [ngModel]="form().categoryId"
+          (ngModelChange)="form.update((f) => ({ ...f, categoryId: $event }))"
+        >
+          <option value="">Uncategorized</option>
+          @for (c of categoriesForType(); track c.id) {
+            <option [value]="c.id">{{ c.name }}</option>
+          }
+        </select>
+      </label>
+
+      <label>
+        Notes
+        <input
+          type="text"
+          [ngModel]="form().notes"
+          (ngModelChange)="form.update((f) => ({ ...f, notes: $event }))"
+          placeholder="Optional"
+        />
+      </label>
+    </div>
+
+    <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}

@@ -1,0 +1,120 @@
+@if (!state.isLoaded()) {
+  <app-launcher />
+} @else {
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <sf-icon name="layers" [size]="22" />
+        <span>SparrowFi</span>
+      </div>
+      <nav>
+        @for (item of navItems; track item.path) {
+          <a [routerLink]="item.path" routerLinkActive="active">
+            <sf-icon [name]="item.icon" [size]="18" />
+            <span>{{ item.label }}</span>
+          </a>
+        }
+      </nav>
+      <button type="button" class="btn btn-secondary btn-block close-btn" (click)="closeFile()">
+        <sf-icon name="arrow-left" [size]="16" />
+        Close File
+      </button>
+    </aside>
+
+    <div class="main-col">
+      <header class="topbar">
+        <button
+          type="button"
+          class="icon-btn hamburger-btn"
+          (click)="toggleMobileNav()"
+          aria-label="Open menu"
+        >
+          <sf-icon name="menu" [size]="20" />
+        </button>
+
+        <div class="file-info">
+          <sf-icon name="folder-open" [size]="16" />
+          <span class="file-name">{{ state.fileName() }}</span>
+          @if (state.dirty()) {
+            <span class="dirty-dot" title="Unsaved changes"></span>
+          }
+        </div>
+
+        <div class="save-group">
+          <button type="button" class="btn btn-primary" [disabled]="state.busy()" (click)="runPrimarySave()">
+            <sf-icon [name]="primaryIcon()" [size]="16" />
+            {{ state.busy() ? 'Saving…' : primaryLabel() }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary menu-toggle"
+            (click)="showSaveMenu.set(!showSaveMenu())"
+            aria-label="More save options"
+          >
+            <sf-icon name="chevron-down" [size]="16" />
+          </button>
+
+          @if (showSaveMenu()) {
+            <div class="save-menu" (click)="$event.stopPropagation()">
+              @if (state.canWriteToOriginal()) {
+                <button type="button" (click)="saveToOriginal()">
+                  <sf-icon name="save" [size]="16" /> Save to Original
+                </button>
+              }
+              @if (state.supportsFileSystemAccess) {
+                <button type="button" (click)="saveAs()">
+                  <sf-icon name="save" [size]="16" /> Save As…
+                </button>
+              }
+              @if (state.supportsShareFiles) {
+                <button type="button" (click)="share()">
+                  <sf-icon name="share" [size]="16" /> Share / Save to Files
+                </button>
+              }
+              <button type="button" (click)="download()">
+                <sf-icon name="download" [size]="16" /> Download a Copy
+              </button>
+            </div>
+          }
+        </div>
+      </header>
+
+      <main class="content">
+        <router-outlet />
+      </main>
+    </div>
+  </div>
+
+  <!-- Mobile off-canvas nav: used instead of a top/bottom-pinned bar since
+       a browser's own chrome can cover fixed edge elements on some mobile
+       browsers. The backdrop is purely visual (pointer-events: none); the
+       actual "click outside to close" logic lives in App.onDocumentClick,
+       which avoids a full-screen click-catcher sitting in the wrong
+       stacking context and covering the drawer itself. -->
+  <div class="mobile-drawer-backdrop" [class.open]="mobileNavOpen()"></div>
+  <aside class="mobile-drawer" [class.open]="mobileNavOpen()">
+    <div class="brand">
+      <sf-icon name="layers" [size]="22" />
+      <span>SparrowFi</span>
+      <button type="button" class="icon-btn drawer-close" (click)="closeMobileNav()" aria-label="Close menu">
+        <sf-icon name="x" [size]="20" />
+      </button>
+    </div>
+    <nav>
+      @for (item of navItems; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="active" (click)="closeMobileNav()">
+          <sf-icon [name]="item.icon" [size]="18" />
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+    <button type="button" class="btn btn-secondary btn-block close-btn" (click)="closeFile()">
+      <sf-icon name="arrow-left" [size]="16" />
+      Close File
+    </button>
+  </aside>
+
+  @if (toast(); as t) {
+    <div class="toast" [class]="'toast-' + t.tone">{{ t.text }}</div>
+  }
+}

@@ -1,0 +1,309 @@
+:host {
+  display: block;
+}
+
+.shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.sidebar {
+  display: none;
+  flex-direction: column;
+  width: 232px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 1rem;
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding: 0 0.4rem;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+}
+
+.sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.sidebar nav a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.sidebar nav a.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+}
+
+.hamburger-btn {
+  margin-right: 0.15rem;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.file-name {
+  color: var(--text);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40vw;
+}
+
+.dirty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+
+.save-group {
+  display: flex;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.save-group .btn-primary {
+  border-radius: 10px 0 0 10px;
+}
+
+.menu-toggle {
+  border-radius: 0 10px 10px 0;
+  border-left: 1px solid var(--border);
+  padding-inline: 0.5rem;
+}
+
+.save-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  z-index: 40;
+}
+
+.save-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.save-menu button:hover {
+  background: var(--surface-2);
+}
+
+.content {
+  flex: 1;
+  padding: 1rem 1rem 2rem;
+  max-width: var(--shell-max-width);
+  width: 100%;
+  margin: 0 auto;
+}
+
+.close-btn {
+  margin-top: auto;
+}
+
+/* Mobile off-canvas nav (see app.html for why this replaces a bottom bar):
+   backdrop is a purely visual dim layer (pointer-events: none - closing on
+   outside-click is handled in App.onDocumentClick instead), and the drawer
+   itself slides in from the left, above the backdrop. */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(15 23 42 / 45%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 45;
+}
+
+.mobile-drawer-backdrop.open {
+  opacity: 1;
+}
+
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(78vw, 280px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+  z-index: 50;
+  box-shadow: 12px 0 30px rgb(0 0 0 / 15%);
+}
+
+.mobile-drawer.open {
+  transform: translateX(0);
+}
+
+.mobile-drawer .brand {
+  position: relative;
+  padding-right: 2.25rem;
+}
+
+.drawer-close {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mobile-drawer nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+}
+
+.mobile-drawer nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: 10px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.mobile-drawer nav a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.mobile-drawer nav a.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 0.7rem 1.1rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  max-width: min(90vw, 420px);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 25%);
+  z-index: 60;
+  text-align: center;
+}
+
+.toast-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+@media (min-width: 900px) {
+  .sidebar {
+    display: flex;
+  }
+  .hamburger-btn,
+  .mobile-drawer,
+  .mobile-drawer-backdrop {
+    display: none;
+  }
+  .content {
+    padding: 1.5rem 2rem 2.5rem;
+  }
+  .toast {
+    bottom: 1.5rem;
+  }
+}

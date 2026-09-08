@@ -1,0 +1,53 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Categories</h1>
+    <button type="button" class="btn btn-primary" (click)="openAdd()">
+      <sf-icon name="plus" [size]="16" /> Add
+    </button>
+  </div>
+
+  @if (categories().length === 0) {
+    <div class="empty-state card">
+      <sf-icon name="tag" [size]="28" />
+      <p>No categories yet.</p>
+    </div>
+  } @else {
+    <div class="stack">
+      @for (c of categories(); track c.id) {
+        <div class="card row" (click)="openEdit(c)">
+          <div class="dot" [style.background]="c.color"></div>
+          <div class="name">{{ c.name }}</div>
+          <div class="type muted">{{ typeLabel(c.type) }}</div>
+          <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(c.id)" aria-label="Delete">
+            <sf-icon name="trash" [size]="16" />
+          </button>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit Category' : 'Add Category'" (close)="showModal.set(false)">
+    <div class="field-row">
+      <label>
+        Name
+        <input type="text" [ngModel]="name()" (ngModelChange)="name.set($event)" (keydown.enter)="save()" />
+      </label>
+      <label>
+        Type
+        <select [ngModel]="type()" (ngModelChange)="type.set($event)">
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
+          <option value="others-in">Others (In)</option>
+          <option value="others-out">Others (Out)</option>
+        </select>
+      </label>
+      <label>
+        Color
+        <sf-color-picker [(value)]="color" />
+      </label>
+    </div>
+    <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}
