@@ -2,14 +2,14 @@ name: Deploy to GitHub Pages (docs/)
 
 # Builds the Angular app and publishes the compiled output into the /docs
 # folder on this branch, which GitHub Pages is configured to serve from
-# (Settings -> Pages -> Source: "Deploy from a branch", Branch: main /docs).
+# (Settings -> Pages -> Source: "Deploy from a branch", Branch: master /docs).
 # No secrets or backend involved: this only builds static client-side
 # assets and never touches user data (SparrowFi never has any server-side
 # component - .spw files stay entirely on the user's own device).
 
 "on":
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
