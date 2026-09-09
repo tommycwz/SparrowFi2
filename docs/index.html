@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-beasties-container>
+  <head>
+    <meta charset="utf-8">
+    <title>SparrowFi</title>
+    <script>
+      // Apply a saved light/dark override before first paint so the app
+      // never flashes the wrong theme. Reads only a local UI preference
+      // (never financial data) and never touches the network. Mirrors
+      // ThemeService, which keeps this in sync while the app is running.
+      (function () {
+        try {
+          var v = localStorage.getItem('sparrowfi-theme');
+          if (v === 'light' || v === 'dark') {
+            document.documentElement.setAttribute('data-theme', v);
+          }
+        } catch (e) {
+          /* storage disabled - falls back to prefers-color-scheme */
+        }
+      })();
+    </script>
+    <base href="/SparrowFi2/">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Personal finance tracker that runs entirely on your device - your .spw file never leaves it.">
+    <meta name="theme-color" content="#1d4ed8">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="manifest" href="manifest.webmanifest">
+
+    <!-- iOS home-screen / standalone-mode support -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SparrowFi">
+  <style>:root{--bg:#f4f6f9;--surface:#ffffff;--surface-2:#eef1f6;--border:#e1e6ee;--text:#10182a;--text-muted:#6b7688;--accent:#1d4ed8;--accent-contrast:#ffffff;--success:#16a34a;--danger:#dc2626;--warning:#d97706;--radius:14px;--shell-max-width:1080px;color-scheme:light}*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}</style><link rel="stylesheet" href="styles-ZWCMGFE7.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="styles-ZWCMGFE7.css"></noscript></head>
+  <body>
+    <app-root></app-root>
+    <noscript>Please enable JavaScript to continue using this application.</noscript>
+  <script src="main-2VPUVRGD.js" type="module"></script></body>
+</html>
