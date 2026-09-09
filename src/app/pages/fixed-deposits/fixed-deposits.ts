@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
 import { FixedDeposit } from '../../core/models';
+import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 
@@ -57,13 +58,11 @@ export class FixedDepositsPage {
   }
 
   maturityDate(fd: FixedDeposit): string {
-    const d = new Date(fd.startDate);
-    d.setMonth(d.getMonth() + fd.months);
-    return d.toISOString().slice(0, 10);
+    return fdMaturityDate(fd);
   }
 
   maturityValue(fd: FixedDeposit): number {
-    return fd.amount * (1 + (fd.percentage / 100) * (fd.months / 12));
+    return fdMaturityValue(fd);
   }
 
   openAdd(): void {

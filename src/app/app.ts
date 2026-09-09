@@ -8,6 +8,8 @@ import {
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { StateService } from './core/state.service';
 import { FileHandlerService } from './core/file-handler.service';
+import { CloudAuthService } from './core/cloud-auth.service';
+import { CloudBackupService } from './core/cloud-backup.service';
 import { IconComponent } from './shared/icon';
 import { LauncherPage } from './pages/launcher/launcher';
 
@@ -59,6 +61,8 @@ export class App {
 
   constructor(
     readonly state: StateService,
+    readonly cloudAuth: CloudAuthService,
+    readonly cloudBackup: CloudBackupService,
     private readonly fileHandler: FileHandlerService,
   ) {
     this.isIOS = fileHandler.isLikelyIOS();
@@ -135,6 +139,28 @@ export class App {
           : 'Shared successfully.',
         'success',
       );
+    }
+  }
+
+  /** "Backup to Cloud" in the save menu - lets a signed-in user push a
+   * backup from anywhere in the app, not just the Settings page. Reuses
+   * the exact same `CloudBackupService.backupNow()` Settings uses; this is
+   * just a shortcut to it. */
+  async backupToCloud(): Promise<void> {
+    this.showSaveMenu.set(false);
+    if (!this.cloudAuth.user()) {
+      this.showToast('Sign in to Cloud Backup from Settings first.', 'info');
+      return;
+    }
+    if (!this.state.isPasswordProtected()) {
+      this.showToast('Turn on Password Protection in Settings before backing up to the cloud.', 'info');
+      return;
+    }
+    try {
+      await this.cloudBackup.backupNow();
+      this.showToast('Backed up to the cloud.', 'success');
+    } catch (err) {
+      this.showToast(err instanceof Error ? err.message : 'Cloud backup failed.', 'danger');
     }
   }
 

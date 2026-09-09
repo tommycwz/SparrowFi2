@@ -6,10 +6,25 @@
     </button>
   </div>
 
+  <div class="segmented">
+    <button type="button" [class.active]="tab() === 'expense'" (click)="tab.set('expense')">
+      Expense <span class="count">{{ tabCounts().expense }}</span>
+    </button>
+    <button type="button" [class.active]="tab() === 'income'" (click)="tab.set('income')">
+      Income <span class="count">{{ tabCounts().income }}</span>
+    </button>
+    <button type="button" [class.active]="tab() === 'others-in'" (click)="tab.set('others-in')">
+      Others In <span class="count">{{ tabCounts()['others-in'] }}</span>
+    </button>
+    <button type="button" [class.active]="tab() === 'others-out'" (click)="tab.set('others-out')">
+      Others Out <span class="count">{{ tabCounts()['others-out'] }}</span>
+    </button>
+  </div>
+
   @if (categories().length === 0) {
     <div class="empty-state card">
       <sf-icon name="tag" [size]="28" />
-      <p>No categories yet.</p>
+      <p>No {{ typeLabel(tab()) }} categories yet.</p>
     </div>
   } @else {
     <div class="stack">
@@ -17,7 +32,6 @@
         <div class="card row" (click)="openEdit(c)">
           <div class="dot" [style.background]="c.color"></div>
           <div class="name">{{ c.name }}</div>
-          <div class="type muted">{{ typeLabel(c.type) }}</div>
           <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(c.id)" aria-label="Delete">
             <sf-icon name="trash" [size]="16" />
           </button>

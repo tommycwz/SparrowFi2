@@ -9,6 +9,40 @@
   font-weight: 800;
 }
 
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.segmented button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.5rem;
+  background: var(--surface-2);
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.segmented button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.segmented button .count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -33,10 +67,6 @@
 .name {
   flex: 1;
   font-weight: 600;
-}
-
-.type {
-  font-size: 0.8rem;
 }
 
 .icon-btn {

@@ -81,6 +81,50 @@
   </section>
 
   <section class="card stack">
+    <div class="section-title">
+      <sf-icon name="cloud" [size]="18" />
+      <h2>Cloud Backup</h2>
+    </div>
+
+    @if (cloudAuth.configured && !cloudAuth.user() && !state.isPasswordProtected()) {
+      <p class="muted">
+        Turn on Password Protection above first, then sign in below using that same password -
+        one password covers both.
+      </p>
+    }
+
+    <sf-cloud-auth-panel />
+
+    @if (cloudAuth.configured && cloudAuth.user()) {
+      @if (!state.isPasswordProtected()) {
+        <div class="banner banner-info">
+          <sf-icon name="info" [size]="16" />
+          <span>Turn on Password Protection above before backing this file up to the cloud.</span>
+        </div>
+      } @else {
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          (click)="backupNow()"
+          [disabled]="cloudBusy()"
+        >
+          {{ cloudBusy() ? 'Backing up…' : 'Backup Now' }}
+        </button>
+        <p class="muted">
+          {{ lastBackupLabel() ? 'Last backed up ' + lastBackupLabel() : 'Not backed up yet.' }}
+        </p>
+      }
+
+      @if (cloudError()) {
+        <div class="banner banner-danger">
+          <sf-icon name="alert-triangle" [size]="16" />
+          <span>{{ cloudError() }}</span>
+        </div>
+      }
+    }
+  </section>
+
+  <section class="card stack">
     <h2>About This File</h2>
     <div class="kv"><span class="muted">File name</span><span>{{ state.fileName() }}</span></div>
     <div class="kv">
@@ -98,9 +142,11 @@
       <h2>Privacy</h2>
     </div>
     <p class="muted">
-      SparrowFi has no server or backend. This file is only ever read and written on this
-      device - nothing is uploaded, synced, or transmitted anywhere, including while this app
-      is installed as a PWA.
+      By default, SparrowFi has no server or backend - this file is only ever read and written
+      on this device. The only exception is the optional Cloud Backup above: if you sign in and
+      back up, the same password-encrypted bytes this file is already saved as get uploaded to
+      your Supabase project. Nothing is ever uploaded unencrypted, and nothing is uploaded at
+      all unless you sign in and press "Backup Now" yourself.
     </p>
   </section>
 </div>

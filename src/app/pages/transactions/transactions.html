@@ -1,21 +1,40 @@
 <div class="stack">
   <div class="page-head">
-    <h1>Transactions</h1>
-    <button type="button" class="btn btn-primary" (click)="openAdd()">
-      <sf-icon name="plus" [size]="16" /> Add
-    </button>
+    <div class="head-titles">
+      <h1>Transactions</h1>
+      <p class="subtitle muted">Your financial flow for <strong>{{ monthLabel() }}</strong></p>
+    </div>
+    <div class="head-actions">
+      <input
+        #importInput
+        type="file"
+        accept=".csv,text/csv"
+        class="visually-hidden"
+        (change)="onImportFileSelected($event)"
+      />
+      <button type="button" class="btn btn-secondary" (click)="importInput.click()">
+        <sf-icon name="upload" [size]="16" /> Import
+      </button>
+      <button type="button" class="btn btn-secondary" (click)="exportCsv()">
+        <sf-icon name="download" [size]="16" /> Export
+      </button>
+    </div>
   </div>
 
-  <select
-    class="filter-select"
-    [ngModel]="filterAccount()"
-    (ngModelChange)="filterAccount.set($event)"
-  >
-    <option value="all">All accounts</option>
-    @for (o of filterOptions(); track o.value) {
-      <option [value]="o.value">{{ o.label }}</option>
-    }
-  </select>
+  <div class="card stats-bar">
+    <div class="stat">
+      <div class="stat-label muted">{{ statsPeriodLabel() }} Income</div>
+      <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(monthlyStats().income) }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label muted">{{ statsPeriodLabel() }} Expense</div>
+      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label muted">Net Balance</div>
+      <div class="stat-value">{{ currencySymbol() }}{{ numberPart(monthlyStats().net) }}</div>
+    </div>
+  </div>
 
   <div class="month-nav">
     <button
@@ -27,7 +46,12 @@
     >
       <sf-icon name="chevron-left" [size]="18" />
     </button>
-    <div class="month-label">{{ monthLabel() }}</div>
+    <div class="month-label-group">
+      <div class="month-label">{{ monthLabel() }}</div>
+      <button type="button" class="month-all-btn" (click)="toggleAllMonths()">
+        {{ selectedMonth() === 'all' ? 'This Month' : 'View All' }}
+      </button>
+    </div>
     <button
       type="button"
       class="month-nav-btn"
@@ -37,9 +61,49 @@
     >
       <sf-icon name="chevron-right" [size]="18" />
     </button>
-    <button type="button" class="month-all-btn" (click)="toggleAllMonths()">
-      {{ selectedMonth() === 'all' ? 'This Month' : 'All' }}
+    <button type="button" class="btn btn-primary add-btn" (click)="openAdd()">
+      <sf-icon name="plus" [size]="16" /> Add Transaction
     </button>
+  </div>
+
+  <div class="card filters-bar">
+    <div class="search-box">
+      <sf-icon name="search" [size]="16" />
+      <input
+        type="text"
+        placeholder="Search by notes…"
+        [ngModel]="searchQuery()"
+        (ngModelChange)="searchQuery.set($event)"
+      />
+    </div>
+
+    <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event)">
+      <option value="all">All Types</option>
+      @for (t of typeOptions; track t) {
+        <option [value]="t">{{ typeLabels[t] }}</option>
+      }
+    </select>
+
+    <select [ngModel]="filterAccount()" (ngModelChange)="filterAccount.set($event)">
+      <option value="all">All Accounts</option>
+      @for (o of filterOptions(); track o.value) {
+        <option [value]="o.value">{{ o.label }}</option>
+      }
+    </select>
+
+    <select [ngModel]="filterCategory()" (ngModelChange)="filterCategory.set($event)">
+      <option value="all">All Categories</option>
+      <option value="__uncategorized__">Uncategorized</option>
+      @for (g of categoryFilterGroups(); track g.type) {
+        @if (g.categories.length > 0) {
+          <optgroup [label]="g.label">
+            @for (c of g.categories; track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </optgroup>
+        }
+      }
+    </select>
   </div>
 
   <div class="swipe-area" (touchstart)="onTouchStart($event)" (touchend)="onTouchEnd($event)">
@@ -52,24 +116,44 @@
       <div class="card tx-list">
         @for (t of transactions(); track t.id) {
           <div class="tx-row" (click)="openEdit(t)">
-            <div class="tx-dot" [style.background]="categoryColor(t.categoryId)"></div>
-            <div class="tx-mid">
-              <div class="tx-cat">{{ categoryName(t.categoryId) }}</div>
-              <div class="tx-sub muted">
-                {{ t.date }}{{ t.time ? ' · ' + t.time : '' }} · {{ accountLabel(t) }}
-              </div>
-              @if (t.notes) {
-                <div class="tx-notes muted">{{ t.notes }}</div>
-              }
+            <div class="tx-date-badge">
+              <div class="day">{{ dateBadge(t.date).day }}</div>
+              <div class="mon">{{ dateBadge(t.date).month }}</div>
             </div>
+
+            <div class="tx-mid">
+              <div class="tx-top-line">
+                <span class="tx-dot" [style.background]="categoryColor(t.categoryId)"></span>
+                <span class="tx-cat">{{ categoryName(t.categoryId) }}</span>
+                @if (accountLabel(t) !== '—') {
+                  <span class="tx-sep">·</span>
+                  <span class="tx-account">{{ accountLabel(t) }}</span>
+                }
+                @if (timeBadge(t.time); as tb) {
+                  <span class="tx-time-badge">{{ tb }}</span>
+                }
+              </div>
+              <div class="tx-notes muted" [class.tx-notes-empty]="!t.notes">
+                {{ t.notes || 'No notes provided' }}
+              </div>
+            </div>
+
             <div
               class="tx-amount"
               [class.positive]="t.type === 'income' || t.type === 'others-in'"
               [class.negative]="t.type === 'expense' || t.type === 'others-out'"
             >
-              {{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}{{ money(t.amount) }}
+              <span class="sign">{{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}</span>
+              <span class="cur">{{ currencySymbol() }}</span>
+              <span class="num">{{ numberPart(t.amount) }}</span>
             </div>
-            <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(t.id)" aria-label="Delete">
+
+            <button
+              type="button"
+              class="icon-btn del-btn"
+              (click)="$event.stopPropagation(); remove(t.id)"
+              aria-label="Delete"
+            >
               <sf-icon name="trash" [size]="16" />
             </button>
           </div>
@@ -183,5 +267,42 @@
     </div>
 
     <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}
+
+@if (showImportModal()) {
+  <sf-modal title="Import Transactions" (close)="cancelImport()">
+    @if (importPreview(); as preview) {
+      <p class="muted import-summary">
+        Found {{ preview.totalRows }} row{{ preview.totalRows === 1 ? '' : 's' }} in the file —
+        {{ preview.toImport.length }} can be imported.
+      </p>
+
+      @if (preview.errors.length > 0) {
+        <div class="banner banner-warning import-errors">
+          <sf-icon name="alert-triangle" [size]="16" />
+          <div class="import-errors-list">
+            @for (e of preview.errors.slice(0, 8); track e) {
+              <div>{{ e }}</div>
+            }
+            @if (preview.errors.length > 8) {
+              <div>…and {{ preview.errors.length - 8 }} more.</div>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="stack">
+        <button
+          type="button"
+          class="btn btn-primary btn-block"
+          [disabled]="preview.toImport.length === 0"
+          (click)="confirmImport()"
+        >
+          Import {{ preview.toImport.length }} Transaction{{ preview.toImport.length === 1 ? '' : 's' }}
+        </button>
+        <button type="button" class="btn btn-secondary btn-block" (click)="cancelImport()">Cancel</button>
+      </div>
+    }
   </sf-modal>
 }

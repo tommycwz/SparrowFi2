@@ -14,6 +14,10 @@
       <sf-icon name="plus" [size]="18" />
       Create New File
     </button>
+    <button type="button" class="btn btn-secondary btn-block" (click)="openCloudModal()">
+      <sf-icon name="cloud" [size]="18" />
+      Restore from Cloud
+    </button>
 
     @if (openError()) {
       <div class="banner banner-danger">
@@ -26,8 +30,9 @@
   <div class="banner banner-info privacy-note">
     <sf-icon name="lock" [size]="18" />
     <span>
-      Everything happens on this device. Your .spw file is read, processed and saved locally in
-      the browser - it is never uploaded anywhere.
+      Everything happens on this device by default. Your .spw file is read, processed and saved
+      locally in the browser - nothing is uploaded unless you sign in and use Cloud Backup
+      yourself.
     </span>
   </div>
 </div>
@@ -108,5 +113,44 @@
     >
       {{ state.busy() ? 'Unlocking…' : 'Unlock' }}
     </button>
+  </sf-modal>
+}
+
+@if (showCloudModal()) {
+  <sf-modal title="Restore from Cloud" (close)="closeCloudModal()">
+    <sf-cloud-auth-panel />
+
+    @if (signedIn()) {
+      @if (cloudBusy() && cloudBackups().length === 0) {
+        <p class="muted">Loading your backups…</p>
+      } @else if (cloudBackups().length === 0) {
+        <p class="muted">No cloud backups yet. Back up a file from Settings first.</p>
+      } @else {
+        <div class="stack cloud-backup-list">
+          @for (b of cloudBackups(); track b.filename) {
+            <div class="card row">
+              <sf-icon name="layers" [size]="16" />
+              <div class="name">{{ b.filename }}</div>
+              <div class="muted backup-date">{{ b.updatedAt | date: 'medium' }}</div>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="restoreBackup(b.filename)"
+                [disabled]="restoringFilename() !== null"
+              >
+                {{ restoringFilename() === b.filename ? 'Restoring…' : 'Restore' }}
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      @if (cloudError()) {
+        <div class="banner banner-danger">
+          <sf-icon name="alert-triangle" [size]="16" />
+          <span>{{ cloudError() }}</span>
+        </div>
+      }
+    }
   </sf-modal>
 }

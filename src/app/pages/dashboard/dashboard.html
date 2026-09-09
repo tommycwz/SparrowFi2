@@ -2,7 +2,25 @@
   <section class="net-worth card">
     <span class="muted">Net Worth</span>
     <h1>{{ netWorthLabel() }}</h1>
+    <div class="net-worth-delta" [class.positive]="netWorthDeltaPositive()" [class.negative]="!netWorthDeltaPositive()">
+      {{ netWorthDeltaLabel() }}
+    </div>
   </section>
+
+  <div class="card stats-bar">
+    <div class="stat">
+      <div class="stat-label muted">Monthly Income</div>
+      <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(monthlyStats().income) }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label muted">Monthly Expense</div>
+      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label muted">Net This Month</div>
+      <div class="stat-value">{{ currencySymbol() }}{{ numberPart(monthlyStats().net) }}</div>
+    </div>
+  </div>
 
   <section>
     <div class="section-head">
@@ -19,15 +37,76 @@
     } @else {
       <div class="account-grid">
         @for (a of state.accountBalances(); track a.kind + a.id) {
-          <div class="account-card card" [style.--dot]="a.color">
-            <div class="dot"></div>
-            <div class="acc-name">{{ a.name }}</div>
+          <div class="account-card card">
+            <div class="acc-header">
+              <span class="acc-dot" [style.background]="a.color"></span>
+              <span class="acc-name">{{ a.name }}</span>
+            </div>
             <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
           </div>
         }
       </div>
     }
   </section>
+
+  <div class="dash-grid">
+    <section>
+      <div class="section-head">
+        <h2>Spending by Category</h2>
+        <span class="muted period-tag">This Month</span>
+      </div>
+
+      @if (categoryBreakdown().items.length === 0) {
+        <div class="empty-state card">
+          <sf-icon name="tag" [size]="28" />
+          <p>No expenses recorded this month yet.</p>
+        </div>
+      } @else {
+        <div class="card breakdown-list">
+          @for (c of categoryBreakdown().items; track c.id) {
+            <div class="breakdown-row">
+              <div class="breakdown-top">
+                <span class="breakdown-dot" [style.background]="c.color"></span>
+                <span class="breakdown-name">{{ c.name }}</span>
+                <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+              </div>
+              <div class="breakdown-bar-track">
+                <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Fixed Deposits</h2>
+        <a routerLink="/fixed-deposits" class="muted link">Manage</a>
+      </div>
+
+      @if (fixedDepositSummary(); as fd) {
+        <div class="card fd-summary">
+          <div class="fd-block">
+            <span class="muted">Total Locked In</span>
+            <div class="fd-total-value">{{ money(fd.totalPrincipal) }}</div>
+            <span class="muted fd-count">{{ fd.count }} active deposit{{ fd.count === 1 ? '' : 's' }}</span>
+          </div>
+          <div class="fd-block">
+            <span class="muted">Next Maturity</span>
+            <div class="fd-next-bank">{{ fd.nextBankName }}</div>
+            <div class="fd-next-date muted">{{ fd.nextMaturityDate }} · {{ money(fd.nextMaturityValue) }}</div>
+          </div>
+        </div>
+      } @else {
+        <div class="empty-state card">
+          <sf-icon name="layers" [size]="28" />
+          <p>No active fixed deposits.</p>
+          <a routerLink="/fixed-deposits" class="btn btn-primary">Add a Fixed Deposit</a>
+        </div>
+      }
+    </section>
+  </div>
 
   <section>
     <div class="section-head">
@@ -45,17 +124,31 @@
       <div class="card tx-list">
         @for (t of recentTransactions(); track t.id) {
           <div class="tx-row">
-            <div class="tx-dot" [style.background]="categoryColor(t.categoryId)"></div>
+            <div class="tx-date-badge">
+              <div class="day">{{ dateBadge(t.date).day }}</div>
+              <div class="mon">{{ dateBadge(t.date).month }}</div>
+            </div>
             <div class="tx-mid">
-              <div class="tx-cat">{{ categoryName(t.categoryId) }}</div>
-              <div class="tx-date muted">{{ t.date }}</div>
+              <div class="tx-top-line">
+                <span class="tx-dot" [style.background]="categoryColor(t.categoryId)"></span>
+                <span class="tx-cat">{{ categoryName(t.categoryId) }}</span>
+                @if (accountLabel(t) !== '—') {
+                  <span class="tx-sep">·</span>
+                  <span class="tx-account">{{ accountLabel(t) }}</span>
+                }
+                @if (timeBadge(t.time); as tb) {
+                  <span class="tx-time-badge">{{ tb }}</span>
+                }
+              </div>
             </div>
             <div
               class="tx-amount"
               [class.positive]="t.type === 'income' || t.type === 'others-in'"
               [class.negative]="t.type === 'expense' || t.type === 'others-out'"
             >
-              {{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}{{ money(t.amount) }}
+              <span class="sign">{{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}</span>
+              <span class="cur">{{ currencySymbol() }}</span>
+              <span class="num">{{ numberPart(t.amount) }}</span>
             </div>
           </div>
         }

@@ -98,6 +98,26 @@ export async function importAesGcmRawKey(raw: Uint8Array): Promise<CryptoKey> {
   ]);
 }
 
+/** Encodes bytes as base64 in chunks, avoiding the call-stack blowup that
+ * `String.fromCharCode(...bytes)` hits on large arrays. Used to carry
+ * already-encrypted SPW3 file bytes as JSON-safe text (e.g. for cloud
+ * backup, which stores this string as-is - it never sees plaintext). */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+export function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   // Guards against passing a Uint8Array backed by a larger/shared buffer.
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;

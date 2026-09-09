@@ -176,6 +176,17 @@
   background: var(--surface-2);
 }
 
+.save-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-menu-divider {
+  height: 1px;
+  margin: 0.3rem 0.2rem;
+  background: var(--border);
+}
+
 .content {
   flex: 1;
   padding: 1rem 1rem 2rem;

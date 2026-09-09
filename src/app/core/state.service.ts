@@ -190,6 +190,22 @@ export class StateService {
     return true;
   }
 
+  /** Loads file bytes obtained from somewhere other than the local file
+   * picker (currently: a decrypted-in-transit-only Cloud Backup download).
+   * Follows the exact same needsCredential / pendingUnlock branch as
+   * `openFile()`, so the existing Unlock modal handles it unchanged - a
+   * cloud-restored file always has no writable handle (`handle: null`),
+   * same as a file opened via the "share" fallback path. */
+  async openFromBytes(name: string, bytes: Uint8Array): Promise<void> {
+    this._unlockError.set(null);
+    if (this.spwFormat.needsCredential(bytes)) {
+      this._pendingUnlock.set({ name, bytes, handle: null });
+      return;
+    }
+    const decoded = await this.spwFormat.decode(bytes);
+    this.applyDecoded(decoded, name, null);
+  }
+
   cancelUnlock(): void {
     this._pendingUnlock.set(null);
     this._unlockError.set(null);
@@ -293,6 +309,21 @@ export class StateService {
       return bytes;
     }
     return this.spwFormat.encodeSpw2(s);
+  }
+
+  /** Bytes for the current file exactly as they'd be written to disk right
+   * now. Used by Cloud Backup, which requires password protection to
+   * already be on - the cloud copy is exactly the same SPW3-encrypted
+   * bytes as the local file, never a separately-encrypted payload. Callers
+   * should check `state()?.settings.passwordEnabled` (or the backup
+   * service's `canBackup`) before calling this so the error below is only
+   * ever a defensive fallback. */
+  async exportEncryptedBytes(): Promise<Uint8Array> {
+    const s = this.requireState();
+    if (!s.settings.passwordEnabled) {
+      throw new Error('Turn on password protection before backing up to the cloud.');
+    }
+    return this.buildFileBytes();
   }
 
   /** Writes back to the original file on disk (File System Access API
@@ -462,6 +493,15 @@ export class StateService {
     this.updateState((s) => ({
       ...s,
       transactions: [...s.transactions, { ...t, id: generateId() }],
+    }));
+  }
+  /** Adds many transactions (e.g. a CSV import) as a single state update,
+   * rather than one signal write per row. */
+  addTransactions(list: Omit<Transaction, 'id'>[]): void {
+    if (list.length === 0) return;
+    this.updateState((s) => ({
+      ...s,
+      transactions: [...s.transactions, ...list.map((t) => ({ ...t, id: generateId() }))],
     }));
   }
   updateTransaction(id: string, patch: Partial<Transaction>): void {

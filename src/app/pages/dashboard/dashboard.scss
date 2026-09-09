@@ -9,6 +9,64 @@
   font-weight: 800;
 }
 
+.net-worth-delta {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.net-worth-delta.positive {
+  color: var(--success);
+}
+
+.net-worth-delta.negative {
+  color: var(--danger);
+}
+
+/* ----- Monthly stats bar (mirrors the Transactions page's summary bar) ---- */
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.stat {
+  padding: 0.3rem 0.75rem;
+  text-align: center;
+  position: relative;
+}
+
+.stat:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: var(--border);
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.3rem;
+}
+
+.stat-value {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.stat-value.positive {
+  color: var(--success);
+}
+
+.stat-value.negative {
+  color: var(--danger);
+}
+
 .section-head {
   display: flex;
   align-items: baseline;
@@ -27,12 +85,19 @@
   text-decoration: none;
 }
 
+.period-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
 }
+
+/* ----- Accounts ---------------------------------------------------------- */
 
 .account-grid {
   display: grid;
@@ -41,25 +106,32 @@
 }
 
 .account-card {
-  position: relative;
-  padding-left: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
-.dot {
-  position: absolute;
-  left: 1.1rem;
-  top: 1.2rem;
+.acc-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.acc-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--dot);
+  flex-shrink: 0;
 }
 
 .acc-name {
   font-size: 0.8rem;
   color: var(--text-muted);
   font-weight: 600;
-  margin-bottom: 0.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .acc-balance {
@@ -71,6 +143,100 @@
   color: var(--danger);
 }
 
+/* ----- Two-column: spending breakdown + fixed deposits ------------------- */
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .dash-grid {
+    grid-template-columns: 1.3fr 1fr;
+  }
+}
+
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.breakdown-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.breakdown-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.breakdown-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.breakdown-name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-amount {
+  font-weight: 700;
+}
+
+.breakdown-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.breakdown-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* ----- Fixed deposits summary --------------------------------------------- */
+
+.fd-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1.1rem;
+}
+
+.fd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fd-total-value,
+.fd-next-bank {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.fd-count,
+.fd-next-date {
+  font-size: 0.78rem;
+}
+
+/* ----- Recent transactions (mirrors the Transactions page's row style) --- */
+
 .tx-list {
   padding: 0.3rem;
 }
@@ -78,8 +244,8 @@
 .tx-row {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.65rem 0.6rem;
+  gap: 0.8rem;
+  padding: 0.7rem 0.6rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -87,11 +253,38 @@
   border-bottom: none;
 }
 
+.tx-date-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  line-height: 1.1;
+}
+
+.tx-date-badge .day {
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+
+.tx-date-badge .mon {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
 .tx-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  display: inline-block;
 }
 
 .tx-mid {
@@ -99,17 +292,52 @@
   min-width: 0;
 }
 
-.tx-cat {
+.tx-top-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
   font-weight: 600;
-  font-size: 0.9rem;
 }
 
-.tx-date {
-  font-size: 0.75rem;
+.tx-cat,
+.tx-account {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-account {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.tx-sep {
+  color: var(--text-muted);
+}
+
+.tx-time-badge {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .tx-amount {
+  font-weight: 800;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.tx-amount .cur {
+  font-size: 0.72rem;
   font-weight: 700;
+  margin-right: 0.15rem;
 }
 
 .tx-amount.positive {

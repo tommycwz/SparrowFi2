@@ -74,6 +74,13 @@
               <button type="button" (click)="download()">
                 <sf-icon name="download" [size]="16" /> Download a Copy
               </button>
+              @if (cloudAuth.configured) {
+                <div class="save-menu-divider"></div>
+                <button type="button" (click)="backupToCloud()" [disabled]="cloudBackup.busy()">
+                  <sf-icon name="cloud" [size]="16" />
+                  {{ cloudBackup.busy() ? 'Backing up…' : 'Backup to Cloud' }}
+                </button>
+              }
             </div>
           }
         </div>

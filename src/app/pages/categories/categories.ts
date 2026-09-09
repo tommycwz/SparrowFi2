@@ -21,10 +21,27 @@ export class CategoriesPage {
   readonly name = signal('');
   readonly color = signal(this.colors[0]);
   readonly type = signal<TransactionType>('expense');
+  readonly tab = signal<TransactionType>('expense');
 
   constructor(readonly state: StateService) {}
 
-  readonly categories = computed(() => this.state.state()?.categories ?? []);
+  readonly allCategories = computed(() => this.state.state()?.categories ?? []);
+
+  readonly categories = computed(() =>
+    this.allCategories().filter((c) => c.type === this.tab()),
+  );
+
+  /** Per-tab counts so each tab can show how many categories it holds. */
+  readonly tabCounts = computed(() => {
+    const counts: Record<TransactionType, number> = {
+      income: 0,
+      expense: 0,
+      'others-in': 0,
+      'others-out': 0,
+    };
+    for (const c of this.allCategories()) counts[c.type]++;
+    return counts;
+  });
 
   typeLabel(type: TransactionType): string {
     switch (type) {
@@ -42,7 +59,7 @@ export class CategoriesPage {
   openAdd(): void {
     this.editingId.set(null);
     this.name.set('');
-    this.type.set('expense');
+    this.type.set(this.tab());
     this.color.set(this.colors[Math.floor(Math.random() * this.colors.length)]);
     this.showModal.set(true);
   }

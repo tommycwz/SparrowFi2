@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
-import { AccountType, Transaction, TransactionType } from '../../core/models';
+import { AccountType, CURRENCIES, Transaction, TransactionType } from '../../core/models';
+import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 
@@ -32,11 +33,6 @@ function blankForm(): TxForm {
   };
 }
 
-/** 'YYYY-MM' for a given date, used as the month-filter key. */
-function monthKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
 /** Minimum horizontal drag (px) before a touch gesture counts as a swipe. */
 const SWIPE_THRESHOLD = 45;
 
@@ -44,6 +40,88 @@ const SWIPE_THRESHOLD = 45;
 function currentTimeString(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+const TYPE_LABELS: Record<TransactionType, string> = {
+  income: 'Income',
+  expense: 'Expense',
+  'others-in': 'Others (In)',
+  'others-out': 'Others (Out)',
+};
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  bank: 'Bank',
+  wallet: 'Wallet',
+  card: 'Card',
+  cash: 'Cash',
+  others: 'Others',
+};
+
+const TYPE_LABELS_REVERSE = new Map(
+  Object.entries(TYPE_LABELS).map(([k, v]) => [v.toLowerCase(), k as TransactionType]),
+);
+const ACCOUNT_TYPE_LABELS_REVERSE = new Map(
+  Object.entries(ACCOUNT_TYPE_LABELS).map(([k, v]) => [v.toLowerCase(), k as AccountType]),
+);
+
+const CSV_HEADER = ['Date', 'Time', 'Type', 'Account Type', 'Account', 'Category', 'Amount', 'Notes'];
+
+/** Wraps a CSV field in quotes (doubling internal quotes) only when it needs it. */
+function csvField(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Minimal RFC4180-ish CSV parser: handles quoted fields, embedded commas/
+ * newlines inside quotes, and doubled-quote escaping. Good enough for a
+ * file this app itself exported (or a spreadsheet export of it). */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\r') {
+      // handled on the following \n
+    } else if (ch === '\n') {
+      row.push(field);
+      field = '';
+      rows.push(row);
+      row = [];
+    } else {
+      field += ch;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''));
+}
+
+interface ImportPreview {
+  toImport: Omit<Transaction, 'id'>[];
+  errors: string[];
+  totalRows: number;
 }
 
 @Component({
@@ -56,13 +134,23 @@ function currentTimeString(): string {
 })
 export class TransactionsPage {
   readonly filterAccount = signal<string>('all');
+  readonly filterType = signal<'all' | TransactionType>('all');
+  /** 'all' | categoryId | '__uncategorized__'. */
+  readonly filterCategory = signal<string>('all');
+  readonly searchQuery = signal('');
   /** 'all' shows every month; otherwise a 'YYYY-MM' key. Starts on the
    * current month so the list opens on something relevant rather than
    * a full, unfiltered history. */
-  readonly selectedMonth = signal<string>(monthKey(new Date()));
+  readonly selectedMonth = signal<string>(monthKeyOf());
   readonly showModal = signal(false);
   readonly editingId = signal<string | null>(null);
   readonly form = signal<TxForm>(blankForm());
+
+  readonly showImportModal = signal(false);
+  readonly importPreview = signal<ImportPreview | null>(null);
+
+  readonly typeLabels = TYPE_LABELS;
+  readonly typeOptions: TransactionType[] = ['income', 'expense', 'others-in', 'others-out'];
 
   private touchStartX = 0;
   private touchStartY = 0;
@@ -88,20 +176,64 @@ export class TransactionsPage {
     }
   });
 
+  /** Categories for the filter dropdown, grouped by type for an <optgroup> layout. */
+  readonly categoryFilterGroups = computed(() => {
+    const cats = this.state.state()?.categories ?? [];
+    return this.typeOptions.map((type) => ({
+      type,
+      label: TYPE_LABELS[type],
+      categories: cats.filter((c) => c.type === type),
+    }));
+  });
+
   readonly transactions = computed(() => {
     const s = this.state.state();
     if (!s) return [];
-    const filter = this.filterAccount();
+    const accountFilter = this.filterAccount();
     const month = this.selectedMonth();
+    const type = this.filterType();
+    const category = this.filterCategory();
+    const query = this.searchQuery().trim().toLowerCase();
+
     let list = [...s.transactions];
-    if (filter !== 'all') {
-      const [kind, id] = filter.split(':');
+    if (accountFilter !== 'all') {
+      const [kind, id] = accountFilter.split(':');
       list = list.filter((t) => t.accountType === kind && t.accountId === id);
     }
     if (month !== 'all') {
       list = list.filter((t) => t.date.slice(0, 7) === month);
     }
+    if (type !== 'all') {
+      list = list.filter((t) => t.type === type);
+    }
+    if (category === '__uncategorized__') {
+      list = list.filter((t) => !t.categoryId);
+    } else if (category !== 'all') {
+      list = list.filter((t) => t.categoryId === category);
+    }
+    if (query) {
+      list = list.filter((t) => (t.notes ?? '').toLowerCase().includes(query));
+    }
     return list.sort((a, b) => (b.date + (b.time ?? '')).localeCompare(a.date + (a.time ?? '')));
+  });
+
+  /** Summary stats for whatever is currently visible in `transactions()`,
+   * so the numbers at the top always match the list below them. */
+  readonly monthlyStats = computed(() => {
+    let income = 0;
+    let expense = 0;
+    for (const t of this.transactions()) {
+      if (t.type === 'income') income += t.amount;
+      else if (t.type === 'expense') expense += t.amount;
+    }
+    return { income, expense, net: income - expense };
+  });
+
+  readonly statsPeriodLabel = computed(() => (this.selectedMonth() === 'all' ? 'All-Time' : 'Monthly'));
+
+  readonly currencySymbol = computed(() => {
+    const currency = this.state.state()?.settings.currency;
+    return CURRENCIES.find((c) => c.value === currency)?.symbol ?? '';
   });
 
   readonly filterOptions = computed(() => {
@@ -116,6 +248,11 @@ export class TransactionsPage {
 
   money(amount: number): string {
     return formatMoney(amount, this.state.state()!.settings.currency);
+  }
+
+  /** Number part only (e.g. "1,234.50"), for the split-currency-symbol amount styling. */
+  numberPart(amount: number): string {
+    return formatAmountNumber(amount);
   }
 
   categoryName(id?: string): string {
@@ -147,6 +284,16 @@ export class TransactionsPage {
     });
   }
 
+  /** Short day/month for the stacked date badge, e.g. { day: '13', month: 'JUL' }. */
+  dateBadge(dateStr: string): { day: string; month: string } {
+    return formatDateBadge(dateStr);
+  }
+
+  /** '13:05' -> '1:05 PM', matching the pill time badge in the design. */
+  timeBadge(time?: string): string | null {
+    return formatTimeBadge(time);
+  }
+
   shiftMonth(delta: number): void {
     const m = this.selectedMonth();
     const base = m === 'all' ? new Date() : (() => {
@@ -154,11 +301,11 @@ export class TransactionsPage {
       return new Date(y, mo - 1, 1);
     })();
     base.setMonth(base.getMonth() + delta);
-    this.selectedMonth.set(monthKey(base));
+    this.selectedMonth.set(monthKeyOf(base));
   }
 
   toggleAllMonths(): void {
-    this.selectedMonth.set(this.selectedMonth() === 'all' ? monthKey(new Date()) : 'all');
+    this.selectedMonth.set(this.selectedMonth() === 'all' ? monthKeyOf() : 'all');
   }
 
   onTouchStart(event: TouchEvent): void {
@@ -241,5 +388,134 @@ export class TransactionsPage {
     if (confirm('Delete this transaction?')) {
       this.state.removeTransaction(id);
     }
+  }
+
+  // ----- Export ---------------------------------------------------------
+
+  exportCsv(): void {
+    const s = this.state.state();
+    if (!s) return;
+    const rows = this.transactions();
+    const lines = [CSV_HEADER.map(csvField).join(',')];
+    for (const t of rows) {
+      const accName =
+        t.accountType === 'bank'
+          ? s.banks.find((b) => b.id === t.accountId)?.name
+          : t.accountType === 'wallet'
+            ? s.wallets.find((w) => w.id === t.accountId)?.name
+            : t.accountType === 'card'
+              ? s.cards.find((c) => c.id === t.accountId)?.name
+              : t.accountType === 'cash'
+                ? 'Cash'
+                : 'Others';
+      const catName = t.categoryId ? (s.categories.find((c) => c.id === t.categoryId)?.name ?? '') : '';
+      const cols = [
+        t.date,
+        t.time ?? '',
+        TYPE_LABELS[t.type],
+        ACCOUNT_TYPE_LABELS[t.accountType],
+        accName ?? '',
+        catName,
+        t.amount.toFixed(2),
+        t.notes ?? '',
+      ];
+      lines.push(cols.map(csvField).join(','));
+    }
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const suffix = this.selectedMonth() === 'all' ? 'All' : this.selectedMonth();
+    a.download = `SparrowFi-Transactions-${suffix}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ----- Import -----------------------------------------------------------
+
+  onImportFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => this.parseImportFile(String(reader.result ?? ''));
+    reader.readAsText(file);
+  }
+
+  private parseImportFile(text: string): void {
+    const s = this.state.state();
+    const rows = parseCsv(text);
+    if (!s || rows.length === 0) {
+      this.importPreview.set({ toImport: [], errors: ['That file has no rows to import.'], totalRows: 0 });
+      this.showImportModal.set(true);
+      return;
+    }
+
+    const [, ...dataRows] = rows;
+    const toImport: Omit<Transaction, 'id'>[] = [];
+    const errors: string[] = [];
+
+    dataRows.forEach((cols, i) => {
+      const rowNum = i + 2; // +1 for header row, +1 for 1-indexing
+      try {
+        const [dateStr, timeStr, typeLabel, accTypeLabel, accName, catName, amountStr, notes] = cols;
+
+        const type = TYPE_LABELS_REVERSE.get((typeLabel ?? '').trim().toLowerCase());
+        if (!type) throw new Error(`unrecognized Type "${typeLabel ?? ''}"`);
+
+        if (!/^\d{4}-\d{2}-\d{2}$/.test((dateStr ?? '').trim())) {
+          throw new Error(`invalid Date "${dateStr ?? ''}" (expected YYYY-MM-DD)`);
+        }
+
+        const amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) throw new Error(`invalid Amount "${amountStr ?? ''}"`);
+
+        const accountType =
+          ACCOUNT_TYPE_LABELS_REVERSE.get((accTypeLabel ?? '').trim().toLowerCase()) ?? 'others';
+
+        let accountId: string | undefined;
+        if (accountType === 'bank' || accountType === 'wallet' || accountType === 'card') {
+          const list = accountType === 'bank' ? s.banks : accountType === 'wallet' ? s.wallets : s.cards;
+          accountId = list.find((a) => a.name.toLowerCase() === (accName ?? '').trim().toLowerCase())?.id;
+        }
+
+        let categoryId: string | undefined;
+        const trimmedCat = (catName ?? '').trim();
+        if (trimmedCat) {
+          categoryId = s.categories.find(
+            (c) => c.type === type && c.name.toLowerCase() === trimmedCat.toLowerCase(),
+          )?.id;
+        }
+
+        toImport.push({
+          date: dateStr.trim(),
+          time: (timeStr ?? '').trim() || undefined,
+          amount,
+          type,
+          accountType,
+          accountId,
+          categoryId,
+          notes: (notes ?? '').trim() || undefined,
+        });
+      } catch (err) {
+        errors.push(`Row ${rowNum}: ${err instanceof Error ? err.message : 'could not be read'}.`);
+      }
+    });
+
+    this.importPreview.set({ toImport, errors, totalRows: dataRows.length });
+    this.showImportModal.set(true);
+  }
+
+  confirmImport(): void {
+    const preview = this.importPreview();
+    if (!preview || preview.toImport.length === 0) return;
+    this.state.addTransactions(preview.toImport);
+    this.cancelImport();
+  }
+
+  cancelImport(): void {
+    this.showImportModal.set(false);
+    this.importPreview.set(null);
   }
 }

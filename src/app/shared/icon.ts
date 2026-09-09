@@ -143,6 +143,19 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
           <rect x="2" y="3" width="20" height="14" rx="2" />
           <path d="M8 21h8" /><path d="M12 17v4" />
         }
+        @case ('upload') {
+          <path d="M12 21V9" /><path d="m7 14 5-5 5 5" /><path d="M5 3h14" />
+        }
+        @case ('search') {
+          <circle cx="11" cy="11" r="7" /><path d="m21 21-4.35-4.35" />
+        }
+        @case ('cloud') {
+          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+        }
+        @case ('log-out') {
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="m16 17 5-5-5-5" /><path d="M21 12H9" />
+        }
       }
     </svg>
   `,
