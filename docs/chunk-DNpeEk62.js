@@ -1,1 +1,0 @@
-var n={myr:`ms-MY`,usd:`en-US`,eur:`de-DE`,gbp:`en-GB`,sgd:`en-SG`,aud:`en-AU`};function t(e,r){try{return new Intl.NumberFormat(n[r]??`en-US`,{style:`currency`,currency:r.toUpperCase(),currencyDisplay:`narrowSymbol`}).format(e)}catch{return`${e.toFixed(2)} ${r.toUpperCase()}`}}export{t};
