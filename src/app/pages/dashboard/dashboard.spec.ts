@@ -10,6 +10,18 @@ import { monthKeyOf } from '../../core/format.util';
  * of when the suite runs. */
 const TODAY = new Date().toISOString().slice(0, 10);
 
+/** A date in the middle of last month, and one in the middle of last year -
+ * for exercising the `categoryPeriod` filter's "Last Month"/"This Year" vs.
+ * "everything else" boundaries regardless of when the suite runs. */
+function daysAgoDate(monthsAgo: number): string {
+  const d = new Date();
+  d.setDate(1); // avoid month-length overflow (e.g. Mar 31 - 1 month != Feb 31)
+  d.setMonth(d.getMonth() - monthsAgo);
+  return d.toISOString().slice(0, 10);
+}
+const LAST_MONTH = daysAgoDate(1);
+const LAST_YEAR = `${new Date().getFullYear() - 1}-06-15`;
+
 describe('DashboardPage charts', () => {
   let state: StateService;
   let page: DashboardPage;
@@ -93,6 +105,53 @@ describe('DashboardPage charts', () => {
     });
   });
 
+  describe('categoryPeriod filtering', () => {
+    beforeEach(() => {
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      const groceries = state.state()!.categories[0].id;
+      state.addTransaction({ date: TODAY, amount: 60, type: 'expense', accountType: 'cash', categoryId: groceries });
+      state.addTransaction({
+        date: LAST_MONTH,
+        amount: 40,
+        type: 'expense',
+        accountType: 'cash',
+        categoryId: groceries,
+      });
+      state.addTransaction({
+        date: LAST_YEAR,
+        amount: 25,
+        type: 'expense',
+        accountType: 'cash',
+        categoryId: groceries,
+      });
+    });
+
+    it('defaults to This Month and counts only this month’s expenses', () => {
+      expect(page.categoryPeriod()).toBe('this-month');
+      expect(page.categoryBreakdown().total).toBe(60);
+    });
+
+    it('Last Month counts only last month’s expenses, not this month’s', () => {
+      page.categoryPeriod.set('last-month');
+      expect(page.categoryBreakdown().total).toBe(40);
+    });
+
+    it('This Year counts everything since Jan 1 but excludes last year', () => {
+      page.categoryPeriod.set('this-year');
+      // LAST_MONTH only counts toward "this year" if the suite doesn't
+      // happen to run in January (where "last month" is December of last
+      // year) - compute the expectation rather than hardcoding it, so the
+      // test doesn't flake once a year.
+      const lastMonthIsThisYear = LAST_MONTH.slice(0, 4) === String(new Date().getFullYear());
+      expect(page.categoryBreakdown().total).toBe(lastMonthIsThisYear ? 100 : 60);
+    });
+
+    it('All Time counts every expense regardless of date', () => {
+      page.categoryPeriod.set('all-time');
+      expect(page.categoryBreakdown().total).toBe(125);
+    });
+  });
+
   describe('cashFlowTrend', () => {
     it('always returns exactly 6 months, oldest first, ending on the current month', () => {
       const trend = page.cashFlowTrend();
@@ -118,6 +177,29 @@ describe('DashboardPage charts', () => {
     it('reports no activity when the last 6 months are empty', () => {
       expect(page.hasCashFlowActivity()).toBe(false);
       expect(page.cashFlowTrend().max).toBe(0);
+    });
+
+    it('marks the year on the first bar and on every January, but not other months', () => {
+      page.cashFlowRange.set(12);
+      const months = page.cashFlowTrend().months;
+      months.forEach((m, i) => {
+        const isJanuary = new Date(`${m.key}-01T00:00:00`).getMonth() === 0;
+        if (i === 0 || isJanuary) {
+          expect(m.label).toContain("'");
+        } else {
+          expect(m.label).not.toContain("'");
+        }
+      });
+    });
+
+    it('widens or narrows to exactly cashFlowRange() months, still ending on the current month', () => {
+      page.cashFlowRange.set(3);
+      expect(page.cashFlowTrend().months.length).toBe(3);
+      expect(page.cashFlowTrend().months[2].key).toBe(monthKeyOf());
+
+      page.cashFlowRange.set(12);
+      expect(page.cashFlowTrend().months.length).toBe(12);
+      expect(page.cashFlowTrend().months[11].key).toBe(monthKeyOf());
     });
   });
 
@@ -201,6 +283,50 @@ describe('DashboardPage charts', () => {
       // First dot is the category's, second is the account's.
       expect((dots[1] as HTMLElement).style.background).toBe('rgb(37, 99, 235)');
       expect(row.querySelector('.tx-account')?.textContent).toContain('Maybank');
+    });
+
+    it('clicking a Cash Flow range tab switches the chart to that many months', () => {
+      // Some activity is needed, or the chart renders the empty state
+      // instead of `.cash-flow-col` bars regardless of the selected range.
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      const tabs = Array.from(el.querySelectorAll<HTMLButtonElement>('.range-tab'));
+      expect(tabs.map((t) => t.textContent?.trim())).toEqual(['3M', '6M', '12M']);
+      // 6M is the default.
+      expect(tabs[1].classList.contains('active')).toBe(true);
+
+      tabs[2].click();
+      fixture.detectChanges();
+      expect(page.cashFlowRange()).toBe(12);
+      expect(tabs[2].classList.contains('active')).toBe(true);
+      expect(el.querySelectorAll('.cash-flow-col').length).toBe(12);
+    });
+
+    it('changing the Spending by Category period select re-filters the breakdown', () => {
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      state.addTransaction({
+        date: LAST_MONTH,
+        amount: 40,
+        type: 'expense',
+        accountType: 'cash',
+        categoryId: state.state()!.categories[0].id,
+      });
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      // Nothing this month, so the empty state shows initially.
+      expect(el.querySelector('.breakdown-card')).toBeNull();
+
+      const select = el.querySelector('select.period-select') as HTMLSelectElement;
+      select.value = 'last-month';
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect(page.categoryPeriod()).toBe('last-month');
+      expect(el.querySelector('.breakdown-card')).not.toBeNull();
+      expect(el.querySelector('.breakdown-amount')?.textContent).toContain('40.00');
     });
   });
 });

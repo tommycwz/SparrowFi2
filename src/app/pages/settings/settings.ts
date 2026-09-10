@@ -8,6 +8,7 @@ import {
   SpwFormatService,
   UnlockCredential,
   WrongCredentialError,
+  formatRecoveryKey,
 } from '../../core/spw-format.service';
 import { FileHandlerService, UserCancelledError } from '../../core/file-handler.service';
 import { BUILD_INFO } from '../../core/build-info';
@@ -16,6 +17,7 @@ import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 
 type ImportCredentialKind = 'password' | 'recovery';
+type ExportProtection = 'none' | 'password';
 
 interface PendingImport {
   name: string;
@@ -40,6 +42,19 @@ export class SettingsPage {
   readonly pendingImport = signal<PendingImport | null>(null);
   readonly importCredentialKind = signal<ImportCredentialKind>('password');
   readonly importCredentialValue = signal('');
+
+  // ----- Export Backup (.spw) ----------------------------------------------
+  readonly exportProtection = signal<ExportProtection>('none');
+  readonly exportPassword = signal('');
+  readonly exportPasswordConfirm = signal('');
+  readonly exportBusy = signal(false);
+  readonly exportError = signal<string | null>(null);
+  /** Set right after a password-protected export succeeds so the "save
+   * this now, it's shown only once" modal can display it - `encodeSpw3New`
+   * generates a brand-new recovery key every time and never stores it, so
+   * this is the one and only chance to show it to the user. */
+  readonly exportRecoveryKey = signal<string | null>(null);
+  readonly exportRecoveryKeyCopied = signal(false);
 
   // ----- Reset Account Data ------------------------------------------------
   readonly resetError = signal<string | null>(null);
@@ -131,6 +146,83 @@ export class SettingsPage {
     } finally {
       this.importBusy.set(false);
     }
+  }
+
+  // ----- Export Backup (.spw) -----------------------------------------------
+
+  setExportProtection(protection: ExportProtection): void {
+    this.exportProtection.set(protection);
+    this.exportError.set(null);
+  }
+
+  async exportBackup(): Promise<void> {
+    const s = this.state.state();
+    if (!s) return;
+    this.exportError.set(null);
+
+    if (this.exportProtection() === 'none') {
+      this.downloadSpwFile(this.spwFormat.encodeSpw2(s));
+      return;
+    }
+
+    const password = this.exportPassword();
+    if (!password) {
+      this.exportError.set('Enter a password to protect this backup.');
+      return;
+    }
+    if (password !== this.exportPasswordConfirm()) {
+      this.exportError.set('Passwords do not match.');
+      return;
+    }
+
+    this.exportBusy.set(true);
+    try {
+      const { bytes, recoveryKey } = await this.spwFormat.encodeSpw3New(s, password);
+      this.downloadSpwFile(bytes);
+      this.exportPassword.set('');
+      this.exportPasswordConfirm.set('');
+      // Shown once, right now - `encodeSpw3New` never stores this key
+      // anywhere, so this modal is the user's only chance to save it.
+      this.exportRecoveryKey.set(recoveryKey);
+    } catch (err) {
+      this.exportError.set(err instanceof Error ? err.message : 'Could not create the backup file.');
+    } finally {
+      this.exportBusy.set(false);
+    }
+  }
+
+  closeRecoveryKeyModal(): void {
+    this.exportRecoveryKey.set(null);
+    this.exportRecoveryKeyCopied.set(false);
+  }
+
+  async copyRecoveryKey(): Promise<void> {
+    const key = this.exportRecoveryKey();
+    if (!key) return;
+    try {
+      await navigator.clipboard.writeText(formatRecoveryKey(key));
+      this.exportRecoveryKeyCopied.set(true);
+    } catch {
+      // Clipboard access can be denied/unavailable (e.g. insecure context)
+      // - the key is still fully visible on screen to copy by hand.
+    }
+  }
+
+  formatRecoveryKey(raw: string): string {
+    return formatRecoveryKey(raw);
+  }
+
+  private downloadSpwFile(bytes: Uint8Array): void {
+    // `Blob`'s DOM typings want an `ArrayBuffer`-backed view specifically,
+    // while `Uint8Array` is typed generically over `ArrayBufferLike` - copy
+    // into a plain, unambiguously `ArrayBuffer`-backed array to satisfy it.
+    const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SparrowFi-Backup-${new Date().toISOString().slice(0, 10)}.spw`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ----- Reset Account Data ------------------------------------------------

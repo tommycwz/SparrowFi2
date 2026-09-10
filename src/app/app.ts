@@ -19,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/accounts', label: 'Accounts', icon: 'wallet' },
   { path: '/categories', label: 'Categories', icon: 'tag' },
   { path: '/fixed-deposits', label: 'Fixed Deposits', icon: 'layers' },
+  { path: '/reports', label: 'Reports', icon: 'bar-chart' },
   { path: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

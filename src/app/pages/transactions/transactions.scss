@@ -42,7 +42,7 @@
 
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
@@ -50,6 +50,8 @@
   padding: 0.3rem 0.75rem;
   text-align: center;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stat:not(:last-child)::after {
@@ -73,6 +75,10 @@
 .stat-value {
   font-size: 1.15rem;
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .stat-value.positive {
@@ -314,13 +320,17 @@
 }
 
 .tx-amount {
+  /* Shrunk from the ~1rem default so `.tx-mid` (the flex sibling) gets
+     back the width a wide bold amount was taking from the category name. */
+  font-size: 0.86rem;
   font-weight: 800;
   white-space: nowrap;
   text-align: right;
+  flex-shrink: 0;
 }
 
 .tx-amount .cur {
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 700;
   margin-right: 0.15rem;
 }

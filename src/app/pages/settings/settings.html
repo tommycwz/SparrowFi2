@@ -93,6 +93,83 @@
     }
   </section>
 
+  <section class="card stack">
+    <div class="section-title">
+      <sf-icon name="download" [size]="18" />
+      <h2>Export Backup</h2>
+    </div>
+    <p class="muted">
+      Your data lives in Supabase and syncs automatically, but you can also save a local
+      <code>.spw</code> copy - handy before a big cleanup, or just for your own records.
+    </p>
+
+    <div class="segmented">
+      <button
+        type="button"
+        [class.active]="exportProtection() === 'none'"
+        (click)="setExportProtection('none')"
+      >
+        Quick Export
+      </button>
+      <button
+        type="button"
+        [class.active]="exportProtection() === 'password'"
+        (click)="setExportProtection('password')"
+      >
+        Password-Protected
+      </button>
+    </div>
+
+    @if (exportProtection() === 'password') {
+      <div class="field-row" style="margin-top: 0.75rem">
+        <label>
+          Password
+          <input
+            type="password"
+            [ngModel]="exportPassword()"
+            (ngModelChange)="exportPassword.set($event)"
+            placeholder="Choose a password for this file"
+            autocomplete="off"
+          />
+        </label>
+        <label>
+          Confirm password
+          <input
+            type="password"
+            [ngModel]="exportPasswordConfirm()"
+            (ngModelChange)="exportPasswordConfirm.set($event)"
+            (keydown.enter)="exportBackup()"
+            placeholder="Re-enter the password"
+            autocomplete="off"
+          />
+        </label>
+      </div>
+      <p class="muted">
+        This password only protects this file - it's unrelated to your account password. You'll
+        get a recovery key after exporting; save it somewhere safe, since it's the only way back
+        into this file if you forget the password.
+      </p>
+    }
+
+    <button
+      type="button"
+      class="btn btn-secondary btn-block"
+      style="margin-top: 0.5rem"
+      (click)="exportBackup()"
+      [disabled]="exportBusy()"
+    >
+      <sf-icon name="download" [size]="16" />
+      {{ exportBusy() ? 'Exporting…' : 'Export Backup (.spw)' }}
+    </button>
+
+    @if (exportError()) {
+      <div class="banner banner-danger">
+        <sf-icon name="alert-triangle" [size]="16" />
+        <span>{{ exportError() }}</span>
+      </div>
+    }
+  </section>
+
   <section class="card stack privacy">
     <div class="section-title">
       <sf-icon name="info" [size]="18" />
@@ -210,6 +287,27 @@
       [disabled]="importBusy() || !importCredentialValue().trim()"
     >
       {{ importBusy() ? 'Unlocking…' : 'Unlock and Import' }}
+    </button>
+  </sf-modal>
+}
+
+@if (exportRecoveryKey(); as key) {
+  <sf-modal title="Save Your Recovery Key" [dismissible]="false">
+    <p class="muted" style="margin-bottom: 1rem">
+      This is the only way back into this backup file if you forget the password you just set.
+      It's shown <strong>once</strong> - write it down or save it somewhere safe before closing
+      this.
+    </p>
+
+    <div class="recovery-key">{{ formatRecoveryKey(key) }}</div>
+
+    <button type="button" class="btn btn-secondary btn-block" style="margin-top: 0.75rem" (click)="copyRecoveryKey()">
+      <sf-icon [name]="exportRecoveryKeyCopied() ? 'check' : 'copy'" [size]="16" />
+      {{ exportRecoveryKeyCopied() ? 'Copied' : 'Copy to Clipboard' }}
+    </button>
+
+    <button type="button" class="btn btn-primary btn-block" style="margin-top: 0.5rem" (click)="closeRecoveryKeyModal()">
+      I've Saved It
     </button>
   </sf-modal>
 }

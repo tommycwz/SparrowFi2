@@ -25,6 +25,10 @@ export const routes: Routes = [
       import('./pages/fixed-deposits/fixed-deposits').then((m) => m.FixedDepositsPage),
   },
   {
+    path: 'reports',
+    loadComponent: () => import('./pages/reports/reports').then((m) => m.ReportsPage),
+  },
+  {
     path: 'settings',
     loadComponent: () => import('./pages/settings/settings').then((m) => m.SettingsPage),
   },

@@ -26,7 +26,7 @@
 
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
@@ -34,6 +34,8 @@
   padding: 0.3rem 0.75rem;
   text-align: center;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stat:not(:last-child)::after {
@@ -57,6 +59,10 @@
 .stat-value {
   font-size: 1.15rem;
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .stat-value.positive {
@@ -88,6 +94,42 @@
 .period-tag {
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.period-select {
+  width: auto;
+  padding: 0.3rem 1.6rem 0.3rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  background-color: var(--surface-2);
+}
+
+.range-tabs {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.range-tab {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.range-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.range-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .empty-state {
@@ -149,13 +191,26 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.25rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (min-width: 900px) {
   .dash-grid {
     grid-template-columns: 1.3fr 1fr;
   }
+}
+
+/* Stretch each column's card to the row's tallest one (Spending by
+   Category's card is often much shorter than Fixed Deposits', or vice
+   versa, depending on how much each has to show) instead of leaving them
+   at their own natural, mismatched heights. */
+.dash-grid > section {
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-grid > section > .card {
+  flex: 1;
 }
 
 .breakdown-card {
@@ -471,13 +526,17 @@
 }
 
 .tx-amount {
+  /* Shrunk from the ~1rem default so `.tx-mid` (the flex sibling) gets
+     back the width a wide bold amount was taking from the category name. */
+  font-size: 0.84rem;
   font-weight: 800;
   white-space: nowrap;
   text-align: right;
+  flex-shrink: 0;
 }
 
 .tx-amount .cur {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 700;
   margin-right: 0.15rem;
 }

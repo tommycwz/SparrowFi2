@@ -1,0 +1,500 @@
+/* ----- Page head ----------------------------------------------------------- */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.page-head h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+/* ----- Filter card ----------------------------------------------------------- */
+
+.filter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.3rem;
+}
+
+.mode-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 9px;
+  padding: 0.5rem 0.4rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mode-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.mode-tab.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.period-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.stepper-btn:hover {
+  background: var(--border);
+}
+
+.stepper-label {
+  font-weight: 800;
+  font-size: 1.05rem;
+  min-width: 140px;
+  text-align: center;
+}
+
+.range-inputs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.range-inputs label {
+  flex: 1;
+  min-width: 130px;
+}
+
+/* ----- Stats bar (mirrors Dashboard/Transactions) --------------------------- */
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.stat {
+  padding: 0.3rem 0.75rem;
+  text-align: center;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stat:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: var(--border);
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.3rem;
+}
+
+.stat-value {
+  font-size: 1.15rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.stat-value.positive,
+.kv .positive {
+  color: var(--success);
+}
+
+.stat-value.negative,
+.kv .negative {
+  color: var(--danger);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* ----- Section heads --------------------------------------------------------- */
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.section-head h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.period-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ----- Monthly cash flow ------------------------------------------------------ */
+
+.cash-flow-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.78rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.legend-dot.income {
+  background: var(--success);
+}
+
+.legend-dot.expense {
+  background: var(--danger);
+}
+
+.cash-flow-chart {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.4rem;
+  height: 160px;
+}
+
+.cash-flow-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.cash-flow-bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+}
+
+.cash-flow-bar {
+  width: 40%;
+  max-width: 16px;
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+
+.cash-flow-bar.income {
+  background: var(--success);
+}
+
+.cash-flow-bar.expense {
+  background: var(--danger);
+}
+
+.cash-flow-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* ----- Income/Expense analysis (two-column, mirrors Dashboard) -------------- */
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+@media (min-width: 900px) {
+  .dash-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.dash-grid > section {
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-grid > section > .card {
+  flex: 1;
+}
+
+.breakdown-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.donut-wrap {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.donut-track {
+  stroke: var(--surface-2);
+  stroke-width: 3.8;
+}
+
+.donut-segment {
+  stroke-width: 3.8;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donut-center-value {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.donut-center-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.breakdown-list {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.breakdown-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.breakdown-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.breakdown-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.breakdown-name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-amount {
+  font-weight: 700;
+}
+
+.breakdown-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.breakdown-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* Per-card/per-wallet category breakdown - small pills under a card/wallet's
+   own row so "which categories did this card get spent on" reads at a
+   glance without needing its own separate chart. */
+.breakdown-subcats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+
+.subcat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.subcat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* ----- Summary ---------------------------------------------------------------- */
+
+.summary-card .kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+}
+
+.summary-card .kv:last-child {
+  border-bottom: none;
+}
+
+/* ----- Current asset balances (mirrors Dashboard's Accounts section) -------- */
+
+.net-worth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.net-worth-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.acc-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.acc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.acc-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acc-balance {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.acc-balance.negative {
+  color: var(--danger);
+}
+
+/* ----- Small screens ----------------------------------------------------------- */
+
+@media (max-width: 480px) {
+  .stat-value {
+    font-size: 0.95rem;
+  }
+}

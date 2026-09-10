@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
@@ -36,8 +37,33 @@ interface MonthFlow {
   expense: number;
 }
 
-/** How many months of history the Cash Flow chart shows. */
-const CASH_FLOW_MONTHS = 6;
+/** How many months of history the Cash Flow chart shows by default - the
+ * user can widen or narrow this with the range selector (`cashFlowRange`). */
+const DEFAULT_CASH_FLOW_MONTHS = 6;
+/** Options offered by the Cash Flow chart's range selector. */
+export const CASH_FLOW_RANGE_OPTIONS = [3, 6, 12] as const;
+export type CashFlowRange = (typeof CASH_FLOW_RANGE_OPTIONS)[number];
+
+/** Options offered by the Spending by Category period selector. */
+export const CATEGORY_PERIOD_OPTIONS = ['this-month', 'last-month', 'this-year', 'all-time'] as const;
+export type CategoryPeriod = (typeof CATEGORY_PERIOD_OPTIONS)[number];
+
+const CATEGORY_PERIOD_LABELS: Record<CategoryPeriod, string> = {
+  'this-month': 'This Month',
+  'last-month': 'Last Month',
+  'this-year': 'This Year',
+  'all-time': 'All Time',
+};
+/** Full empty-state sentence per period, since "yet" only reads naturally
+ * for the periods that include the present (This Month/This Year) - "Last
+ * Month" and "All Time" are complete/unbounded, so tacking "yet" onto them
+ * would misleadingly suggest more could still show up. */
+const CATEGORY_PERIOD_EMPTY_TEXT: Record<CategoryPeriod, string> = {
+  'this-month': 'No expenses recorded this month yet.',
+  'last-month': 'No expenses recorded last month.',
+  'this-year': 'No expenses recorded this year yet.',
+  'all-time': 'No expenses recorded yet.',
+};
 /** Circumference of the donut's SVG circle when its radius is 15.9155 -
  * chosen (the standard "no-library donut chart" trick) specifically so a
  * percentage (0-100) can be used directly as a stroke-dasharray/dashoffset
@@ -47,13 +73,21 @@ const DONUT_CIRCUMFERENCE = 100;
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, IconComponent],
+  imports: [RouterLink, IconComponent, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })
 export class DashboardPage {
   constructor(readonly state: StateService) {}
+
+  readonly categoryPeriod = signal<CategoryPeriod>('this-month');
+  readonly categoryPeriodOptions = CATEGORY_PERIOD_OPTIONS;
+  readonly categoryPeriodLabels = CATEGORY_PERIOD_LABELS;
+  readonly categoryPeriodEmptyText = computed(() => CATEGORY_PERIOD_EMPTY_TEXT[this.categoryPeriod()]);
+
+  readonly cashFlowRange = signal<CashFlowRange>(DEFAULT_CASH_FLOW_MONTHS);
+  readonly cashFlowRangeOptions = CASH_FLOW_RANGE_OPTIONS;
 
   readonly netWorthLabel = computed(() =>
     formatMoney(this.state.netWorth(), this.state.state()!.settings.currency),
@@ -102,16 +136,31 @@ export class DashboardPage {
     return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
   });
 
-  /** This month's expenses grouped by category, sorted largest first, with
-   * anything past the top few folded into a single "Other" slice - the
-   * classic "where did my money go" dashboard widget. */
+  /** Whether a transaction date falls within the currently-selected
+   * `categoryPeriod` - factored out of `categoryBreakdown` so the period
+   * logic (what "This Month"/"Last Month"/"This Year"/"All Time" actually
+   * mean in terms of date-string comparisons) lives in one place. */
+  private matchesCategoryPeriod(dateStr: string): boolean {
+    const period = this.categoryPeriod();
+    if (period === 'all-time') return true;
+    if (period === 'this-year') return dateStr.slice(0, 4) === String(new Date().getFullYear());
+    const now = new Date();
+    const target =
+      period === 'last-month'
+        ? monthKeyOf(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+        : monthKeyOf(now);
+    return dateStr.slice(0, 7) === target;
+  }
+
+  /** Expenses grouped by category for the selected `categoryPeriod`, sorted
+   * largest first, with anything past the top few folded into a single
+   * "Other" slice - the classic "where did my money go" dashboard widget. */
   readonly categoryBreakdown = computed<{ items: CategorySlice[]; total: number }>(() => {
     const s = this.state.state();
     if (!s) return { items: [], total: 0 };
-    const monthKey = monthKeyOf();
     const totals = new Map<string, number>();
     for (const t of s.transactions) {
-      if (t.type !== 'expense' || t.date.slice(0, 7) !== monthKey) continue;
+      if (t.type !== 'expense' || !this.matchesCategoryPeriod(t.date)) continue;
       const key = t.categoryId ?? '__uncategorized__';
       totals.set(key, (totals.get(key) ?? 0) + t.amount);
     }
@@ -167,18 +216,18 @@ export class DashboardPage {
     });
   });
 
-  /** Income vs. expense for each of the last `CASH_FLOW_MONTHS` months
-   * (this one included), oldest first, plus the largest single bar value
-   * so the template can scale every bar to the same axis. Always returns
-   * exactly `CASH_FLOW_MONTHS` entries, even for months with no activity,
-   * so the chart's x-axis is stable rather than shrinking when recent
-   * months are quiet. */
+  /** Income vs. expense for each of the last `cashFlowRange()` months (this
+   * one included), oldest first, plus the largest single bar value so the
+   * template can scale every bar to the same axis. Always returns exactly
+   * `cashFlowRange()` entries, even for months with no activity, so the
+   * chart's x-axis is stable rather than shrinking when recent months are
+   * quiet. */
   readonly cashFlowTrend = computed<{ months: MonthFlow[]; max: number }>(() => {
     const s = this.state.state();
     const now = new Date();
     const buckets = new Map<string, { income: number; expense: number }>();
     const keys: string[] = [];
-    for (let i = CASH_FLOW_MONTHS - 1; i >= 0; i--) {
+    for (let i = this.cashFlowRange() - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = monthKeyOf(d);
       keys.push(key);
@@ -190,11 +239,19 @@ export class DashboardPage {
       if (t.type === 'income') bucket.income += t.amount;
       else if (t.type === 'expense') bucket.expense += t.amount;
     }
+    // Wider ranges (12M) can span a Jan 1 boundary, where "Oct … Jan …
+    // Sep" reads as one ambiguous year - show the year on the first bar
+    // and on every January after it, like a typical time-series axis,
+    // rather than cluttering every single label with it.
+    let prevYear: number | null = null;
     const months = keys.map((key) => {
       const b = buckets.get(key)!;
-      const label = new Date(`${key}-01T00:00:00`).toLocaleDateString(undefined, {
-        month: 'short',
-      });
+      const date = new Date(`${key}-01T00:00:00`);
+      const year = date.getFullYear();
+      const showYear = prevYear === null || year !== prevYear;
+      prevYear = year;
+      const month = date.toLocaleDateString(undefined, { month: 'short' });
+      const label = showYear ? `${month} '${String(year).slice(-2)}` : month;
       return { key, label, income: b.income, expense: b.expense };
     });
     const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense]));

@@ -58,7 +58,18 @@
   <section>
     <div class="section-head">
       <h2>Cash Flow</h2>
-      <span class="muted period-tag">Last {{ cashFlowTrend().months.length }} Months</span>
+      <div class="range-tabs" role="group" aria-label="Cash flow range">
+        @for (r of cashFlowRangeOptions; track r) {
+          <button
+            type="button"
+            class="range-tab"
+            [class.active]="cashFlowRange() === r"
+            (click)="cashFlowRange.set(r)"
+          >
+            {{ r }}M
+          </button>
+        }
+      </div>
     </div>
 
     @if (!hasCashFlowActivity()) {
@@ -99,13 +110,22 @@
     <section>
       <div class="section-head">
         <h2>Spending by Category</h2>
-        <span class="muted period-tag">This Month</span>
+        <select
+          class="period-select"
+          [ngModel]="categoryPeriod()"
+          (ngModelChange)="categoryPeriod.set($event)"
+          aria-label="Spending by category period"
+        >
+          @for (p of categoryPeriodOptions; track p) {
+            <option [value]="p">{{ categoryPeriodLabels[p] }}</option>
+          }
+        </select>
       </div>
 
       @if (categoryBreakdown().items.length === 0) {
         <div class="empty-state card">
           <sf-icon name="tag" [size]="28" />
-          <p>No expenses recorded this month yet.</p>
+          <p>{{ categoryPeriodEmptyText() }}</p>
         </div>
       } @else {
         <div class="card breakdown-card">
