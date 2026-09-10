@@ -1,156 +1,32 @@
 <div class="launcher">
   <div class="hero">
-    <div class="logo"><sf-icon name="layers" [size]="30" /></div>
+    <div class="logo"><img src="icons/icon-192x192.png" alt="" /></div>
     <h1>SparrowFi</h1>
-    <p class="muted">Your finances, kept entirely on your device.</p>
+    <p class="muted">Sign in to load your finances.</p>
   </div>
 
   <div class="actions card">
-    <button type="button" class="btn btn-primary btn-block" (click)="openFile()" [disabled]="opening()">
-      <sf-icon name="folder-open" [size]="18" />
-      Open .spw File
-    </button>
-    <button type="button" class="btn btn-secondary btn-block" (click)="showNewFileModal.set(true)">
-      <sf-icon name="plus" [size]="18" />
-      Create New File
-    </button>
-    <button type="button" class="btn btn-secondary btn-block" (click)="openCloudModal()">
-      <sf-icon name="cloud" [size]="18" />
-      Restore from Cloud
-    </button>
-
-    @if (openError()) {
+    @if (loading()) {
+      <p class="muted" style="text-align: center">Loading your data…</p>
+    } @else if (loadError()) {
       <div class="banner banner-danger">
         <sf-icon name="alert-triangle" [size]="16" />
-        <span>{{ openError() }}</span>
+        <span>{{ loadError() }}</span>
       </div>
+      <button type="button" class="btn btn-primary btn-block" (click)="retryLoad()">
+        Try Again
+      </button>
+    } @else {
+      <sf-cloud-auth-panel />
     }
   </div>
 
   <div class="banner banner-info privacy-note">
     <sf-icon name="lock" [size]="18" />
     <span>
-      Everything happens on this device by default. Your .spw file is read, processed and saved
-      locally in the browser - nothing is uploaded unless you sign in and use Cloud Backup
-      yourself.
+      Your data is encrypted in the browser - with a key derived from the password you sign in
+      with - before it's ever sent anywhere. Supabase only ever stores ciphertext; SparrowFi itself
+      never sees your numbers unencrypted.
     </span>
   </div>
 </div>
-
-@if (showNewFileModal()) {
-  <sf-modal title="Create a new file" (close)="showNewFileModal.set(false)">
-    <div class="field-row">
-      <label>
-        File name
-        <div class="filename-input">
-          <input
-            type="text"
-            [ngModel]="newFileName()"
-            (ngModelChange)="newFileName.set($event)"
-            (keydown.enter)="createNew()"
-            placeholder="MyFinance"
-          />
-          <span class="muted">.spw</span>
-        </div>
-      </label>
-    </div>
-    <button type="button" class="btn btn-primary btn-block" (click)="createNew()">
-      Start Fresh
-    </button>
-  </sf-modal>
-}
-
-@if (state.pendingUnlock(); as pending) {
-  <sf-modal title="Password Protected" [dismissible]="!state.busy()" (close)="cancelUnlock()">
-    <p class="muted" style="margin-bottom: 1rem">
-      <strong>{{ pending.name }}</strong> is encrypted. Enter the password, or use your recovery
-      key if you've forgotten it.
-    </p>
-
-    <div class="segmented">
-      <button
-        type="button"
-        [class.active]="credentialKind() === 'password'"
-        (click)="credentialKind.set('password')"
-      >
-        Password
-      </button>
-      <button
-        type="button"
-        [class.active]="credentialKind() === 'recovery'"
-        (click)="credentialKind.set('recovery')"
-      >
-        Recovery Key
-      </button>
-    </div>
-
-    <div class="field-row" style="margin-top: 1rem">
-      <label>
-        {{ credentialKind() === 'password' ? 'Password' : 'Recovery key' }}
-        <input
-          [type]="credentialKind() === 'password' ? 'password' : 'text'"
-          [ngModel]="credentialValue()"
-          (ngModelChange)="credentialValue.set($event)"
-          (keydown.enter)="submitCredential()"
-          [placeholder]="credentialKind() === 'password' ? 'Enter password' : 'ABC123-DEF456-GHI789'"
-          autocomplete="off"
-        />
-      </label>
-    </div>
-
-    @if (state.unlockError()) {
-      <div class="banner banner-danger" style="margin-bottom: 1rem">
-        <sf-icon name="alert-triangle" [size]="16" />
-        <span>{{ state.unlockError() }}</span>
-      </div>
-    }
-
-    <button
-      type="button"
-      class="btn btn-primary btn-block"
-      (click)="submitCredential()"
-      [disabled]="state.busy() || !credentialValue().trim()"
-    >
-      {{ state.busy() ? 'Unlocking…' : 'Unlock' }}
-    </button>
-  </sf-modal>
-}
-
-@if (showCloudModal()) {
-  <sf-modal title="Restore from Cloud" (close)="closeCloudModal()">
-    <sf-cloud-auth-panel />
-
-    @if (signedIn()) {
-      @if (cloudBusy() && cloudBackups().length === 0) {
-        <p class="muted">Loading your backups…</p>
-      } @else if (cloudBackups().length === 0) {
-        <p class="muted">No cloud backups yet. Back up a file from Settings first.</p>
-      } @else {
-        <div class="stack cloud-backup-list">
-          @for (b of cloudBackups(); track b.filename) {
-            <div class="card row">
-              <sf-icon name="layers" [size]="16" />
-              <div class="name">{{ b.filename }}</div>
-              <div class="muted backup-date">{{ b.updatedAt | date: 'medium' }}</div>
-              <button
-                type="button"
-                class="btn btn-secondary"
-                (click)="restoreBackup(b.filename)"
-                [disabled]="restoringFilename() !== null"
-              >
-                {{ restoringFilename() === b.filename ? 'Restoring…' : 'Restore' }}
-              </button>
-            </div>
-          }
-        </div>
-      }
-
-      @if (cloudError()) {
-        <div class="banner banner-danger">
-          <sf-icon name="alert-triangle" [size]="16" />
-          <span>{{ cloudError() }}</span>
-        </div>
-      }
-    }
-  </sf-modal>
-}

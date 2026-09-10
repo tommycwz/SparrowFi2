@@ -30,6 +30,13 @@
   padding: 0 0.4rem;
 }
 
+.brand-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .sidebar nav {
   display: flex;
   flex-direction: column;
@@ -124,67 +131,6 @@
   border-radius: 50%;
   background: var(--warning);
   flex-shrink: 0;
-}
-
-.save-group {
-  display: flex;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.save-group .btn-primary {
-  border-radius: 10px 0 0 10px;
-}
-
-.menu-toggle {
-  border-radius: 0 10px 10px 0;
-  border-left: 1px solid var(--border);
-  padding-inline: 0.5rem;
-}
-
-.save-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
-  padding: 0.4rem;
-  display: flex;
-  flex-direction: column;
-  min-width: 220px;
-  z-index: 40;
-}
-
-.save-menu button {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  background: none;
-  border: none;
-  text-align: left;
-  padding: 0.55rem 0.6rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--text);
-}
-
-.save-menu button:hover {
-  background: var(--surface-2);
-}
-
-.save-menu button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.save-menu-divider {
-  height: 1px;
-  margin: 0.3rem 0.2rem;
-  background: var(--border);
 }
 
 .content {

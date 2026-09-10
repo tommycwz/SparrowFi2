@@ -9,16 +9,10 @@ import {
   Wallet,
   createEmptyState,
 } from './models';
-import {
-  DecodedSpw,
-  Spw3Crypto,
-  SpwFormatService,
-  UnlockCredential,
-  WrongCredentialError,
-} from './spw-format.service';
-import { FileHandlerService, OpenedFile, UserCancelledError } from './file-handler.service';
+import { CloudDataService } from './cloud-data.service';
 import { generateId } from './id.util';
 import { createDefaultCategories } from './default-categories';
+import { fdMaturityDate, fdMaturityValue } from './fixed-deposit.util';
 
 export interface AccountBalance {
   kind: 'bank' | 'wallet' | 'card' | 'bucket';
@@ -28,53 +22,28 @@ export interface AccountBalance {
   balance: number;
 }
 
-export type SaveMethod = 'original' | 'save-as' | 'share' | 'download';
-
-export interface PendingUnlock {
-  name: string;
-  bytes: Uint8Array;
-  handle: FileSystemFileHandle | null;
-}
-
 const CASH_BUCKET_COLOR = '#14B8A6';
 const OTHERS_BUCKET_COLOR = '#94A3B8';
 
 /**
- * Single source of truth for the currently open SparrowFi file: the parsed
- * state, its dirty/loaded status, the crypto context for password-protected
- * files, and the file handle/name used for saving. All mutation methods
- * live here so every screen shares one signal graph. Nothing in this
- * service ever performs network I/O.
+ * Single source of truth for the signed-in account's finance data: the
+ * parsed state and its loaded/dirty/busy status. All mutation methods live
+ * here so every screen shares one signal graph. Data only ever moves
+ * to/from Supabase through `CloudDataService`, which handles the
+ * client-side encryption - this service never sees a network request or a
+ * raw byte, only the already-decrypted `AppState`.
  */
 @Injectable({ providedIn: 'root' })
 export class StateService {
   private readonly _state = signal<AppState | null>(null);
-  private readonly _fileName = signal<string>('MyFinance.spw');
-  private readonly _fileHandle = signal<FileSystemFileHandle | null>(null);
-  private readonly _crypto = signal<Spw3Crypto | null>(null);
   private readonly _dirty = signal(false);
-  private readonly _pendingUnlock = signal<PendingUnlock | null>(null);
-  private readonly _unlockError = signal<string | null>(null);
   private readonly _busy = signal(false);
-  private readonly _lastSaveMethod = signal<SaveMethod | null>(null);
 
   readonly state = this._state.asReadonly();
-  readonly fileName = this._fileName.asReadonly();
-  readonly fileHandle = this._fileHandle.asReadonly();
   readonly dirty = this._dirty.asReadonly();
-  readonly pendingUnlock = this._pendingUnlock.asReadonly();
-  readonly unlockError = this._unlockError.asReadonly();
   readonly busy = this._busy.asReadonly();
-  readonly lastSaveMethod = this._lastSaveMethod.asReadonly();
 
   readonly isLoaded = computed(() => this._state() !== null);
-  readonly isPasswordProtected = computed(() => this._state()?.settings.passwordEnabled ?? false);
-
-  readonly supportsFileSystemAccess: boolean;
-  readonly supportsShareFiles: boolean;
-  readonly canWriteToOriginal = computed(
-    () => this.supportsFileSystemAccess && this._fileHandle() !== null,
-  );
 
   readonly accountBalances = computed<AccountBalance[]>(() => {
     const s = this._state();
@@ -146,253 +115,70 @@ export class StateService {
     this.accountBalances().reduce((sum, a) => sum + a.balance, 0),
   );
 
-  constructor(
-    private readonly spwFormat: SpwFormatService,
-    private readonly fileHandler: FileHandlerService,
-  ) {
-    this.supportsFileSystemAccess = fileHandler.supportsFileSystemAccess;
-    this.supportsShareFiles = fileHandler.supportsShareFiles;
+  constructor(private readonly cloudData: CloudDataService) {}
+
+  // ----- Lifecycle: load / save / sign out --------------------------------
+
+  /** Loads the signed-in account's data from Supabase (decrypting
+   * client-side), or seeds a fresh empty state with the default category
+   * list for a brand-new account that hasn't saved anything yet. Called by
+   * the Launcher right after a successful sign-in/sign-up. */
+  async load(): Promise<void> {
+    const loaded = await this.cloudData.load();
+    this._state.set(loaded ?? { ...createEmptyState(), categories: createDefaultCategories() });
+    this._dirty.set(false);
   }
 
-  // ----- Lifecycle: create / open / unlock -----------------------------
-
-  createNew(fileName = 'MyFinance.spw'): void {
-    this._state.set({ ...createEmptyState(), categories: createDefaultCategories() });
-    this._fileName.set(this.ensureExtension(fileName));
-    this._fileHandle.set(null);
-    this._crypto.set(null);
-    this._pendingUnlock.set(null);
-    this._unlockError.set(null);
-    this._lastSaveMethod.set(null);
-    this._dirty.set(true);
-  }
-
-  /** Opens a file picker and either loads the file immediately (SPW1/SPW2)
-   * or stages it in `pendingUnlock` for the UI to collect a password
-   * (SPW3). Returns `false` if the user cancelled the picker. */
-  async openFile(): Promise<boolean> {
-    let opened: OpenedFile;
-    try {
-      opened = await this.fileHandler.pickAndOpen();
-    } catch (err) {
-      if (err instanceof UserCancelledError) return false;
-      throw err;
-    }
-    this._unlockError.set(null);
-
-    if (this.spwFormat.needsCredential(opened.bytes)) {
-      this._pendingUnlock.set({ name: opened.name, bytes: opened.bytes, handle: opened.handle });
-      return true;
-    }
-
-    const decoded = await this.spwFormat.decode(opened.bytes);
-    this.applyDecoded(decoded, opened.name, opened.handle);
-    return true;
-  }
-
-  /** Loads file bytes obtained from somewhere other than the local file
-   * picker (currently: a decrypted-in-transit-only Cloud Backup download).
-   * Follows the exact same needsCredential / pendingUnlock branch as
-   * `openFile()`, so the existing Unlock modal handles it unchanged - a
-   * cloud-restored file always has no writable handle (`handle: null`),
-   * same as a file opened via the "share" fallback path. */
-  async openFromBytes(name: string, bytes: Uint8Array): Promise<void> {
-    this._unlockError.set(null);
-    if (this.spwFormat.needsCredential(bytes)) {
-      this._pendingUnlock.set({ name, bytes, handle: null });
-      return;
-    }
-    const decoded = await this.spwFormat.decode(bytes);
-    this.applyDecoded(decoded, name, null);
-  }
-
-  cancelUnlock(): void {
-    this._pendingUnlock.set(null);
-    this._unlockError.set(null);
-  }
-
-  async unlock(credential: UnlockCredential): Promise<boolean> {
-    const pending = this._pendingUnlock();
-    if (!pending) return false;
+  /** Encrypts and saves the current state back to Supabase, replacing
+   * whatever was there before. */
+  async save(): Promise<void> {
+    const current = this.requireState();
+    const toSave: AppState = {
+      ...current,
+      user: { ...current.user, isNew: false, lastExport: new Date().toISOString() },
+    };
     this._busy.set(true);
-    this._unlockError.set(null);
     try {
-      const decoded = await this.spwFormat.decode(pending.bytes, credential);
-      this.applyDecoded(decoded, pending.name, pending.handle);
-      this._pendingUnlock.set(null);
-      return true;
-    } catch (err) {
-      if (err instanceof WrongCredentialError) {
-        this._unlockError.set(err.message);
-        return false;
-      }
-      throw err;
+      await this.cloudData.save(toSave);
+      this._state.set(toSave);
+      this._dirty.set(false);
     } finally {
       this._busy.set(false);
     }
   }
 
-  private applyDecoded(
-    decoded: DecodedSpw,
-    name: string,
-    handle: FileSystemFileHandle | null,
-  ): void {
-    this._state.set(decoded.state);
-    this._crypto.set(decoded.crypto);
-    this._fileName.set(name);
-    this._fileHandle.set(handle);
-    this._dirty.set(false);
-    this._lastSaveMethod.set(null);
+  /** Deletes the signed-in account's saved record from Supabase, then
+   * replaces the in-memory state with a fresh empty one (default
+   * categories, everything else blank) and saves that back - so the
+   * account ends up at a clean slate rather than left pointing at nothing
+   * until the next save. Irreversible: there is no recovery key, so the
+   * caller (Settings) must get explicit confirmation before calling this. */
+  async resetData(): Promise<void> {
+    this._busy.set(true);
+    try {
+      await this.cloudData.reset();
+      const empty = { ...createEmptyState(), categories: createDefaultCategories() };
+      await this.cloudData.save(empty);
+      this._state.set(empty);
+      this._dirty.set(false);
+    } finally {
+      this._busy.set(false);
+    }
   }
 
-  closeFile(): void {
+  /** Clears the in-memory state (does not sign out of Supabase itself -
+   * callers pair this with `CloudAuthService.signOut()`). */
+  signOut(): void {
     this._state.set(null);
-    this._fileHandle.set(null);
-    this._crypto.set(null);
-    this._pendingUnlock.set(null);
-    this._unlockError.set(null);
     this._dirty.set(false);
-    this._lastSaveMethod.set(null);
   }
 
-  // ----- Password protection management ---------------------------------
-
-  async enablePasswordProtection(password: string): Promise<string> {
-    const s = this.requireState();
-    const { recoveryKey, crypto } = await this.spwFormat.encodeSpw3New(s, password);
-    this._crypto.set(crypto);
-    this.updateState((st) => ({ ...st, settings: { ...st.settings, passwordEnabled: true } }));
-    return recoveryKey;
-  }
-
-  async changePassword(newPassword: string): Promise<void> {
-    const s = this.requireState();
-    const crypto = this._crypto();
-    if (!crypto) throw new Error('File is not password-protected.');
-    const { crypto: nextCrypto } = await this.spwFormat.encodeSpw3ChangePassword(
-      s,
-      crypto,
-      newPassword,
-    );
-    this._crypto.set(nextCrypto);
+  /** Wholesale-replaces the current state, e.g. after decoding an imported
+   * legacy `.spw` file. Marks the result dirty so the caller is prompted
+   * to `save()` it. */
+  replaceState(state: AppState): void {
+    this._state.set(state);
     this._dirty.set(true);
-  }
-
-  async regenerateRecoveryKey(): Promise<string> {
-    const s = this.requireState();
-    const crypto = this._crypto();
-    if (!crypto) throw new Error('File is not password-protected.');
-    const { recoveryKey, crypto: nextCrypto } = await this.spwFormat.encodeSpw3RegenerateRecovery(
-      s,
-      crypto,
-    );
-    this._crypto.set(nextCrypto);
-    this._dirty.set(true);
-    return recoveryKey;
-  }
-
-  disablePasswordProtection(): void {
-    this._crypto.set(null);
-    this.updateState((st) => ({ ...st, settings: { ...st.settings, passwordEnabled: false } }));
-  }
-
-  // ----- Saving -----------------------------------------------------------
-
-  private async buildFileBytes(): Promise<Uint8Array> {
-    const s = this.requireState();
-    if (s.settings.passwordEnabled) {
-      const crypto = this._crypto();
-      if (!crypto) {
-        throw new Error('Password protection is enabled but no key is available in memory.');
-      }
-      const { bytes } = await this.spwFormat.encodeSpw3Resave(s, crypto);
-      return bytes;
-    }
-    return this.spwFormat.encodeSpw2(s);
-  }
-
-  /** Bytes for the current file exactly as they'd be written to disk right
-   * now. Used by Cloud Backup, which requires password protection to
-   * already be on - the cloud copy is exactly the same SPW3-encrypted
-   * bytes as the local file, never a separately-encrypted payload. Callers
-   * should check `state()?.settings.passwordEnabled` (or the backup
-   * service's `canBackup`) before calling this so the error below is only
-   * ever a defensive fallback. */
-  async exportEncryptedBytes(): Promise<Uint8Array> {
-    const s = this.requireState();
-    if (!s.settings.passwordEnabled) {
-      throw new Error('Turn on password protection before backing up to the cloud.');
-    }
-    return this.buildFileBytes();
-  }
-
-  /** Writes back to the original file on disk (File System Access API
-   * only). Requires explicit permission from the browser - never silent. */
-  async saveToOriginal(): Promise<void> {
-    const handle = this._fileHandle();
-    if (!handle) throw new Error('No writable file handle is available.');
-    this._busy.set(true);
-    try {
-      const bytes = await this.buildFileBytes();
-      await this.fileHandler.saveToHandle(handle, bytes);
-      this.markSaved('original');
-    } finally {
-      this._busy.set(false);
-    }
-  }
-
-  /** "Save As" using the File System Access API's native save dialog. */
-  async saveAs(): Promise<boolean> {
-    this._busy.set(true);
-    try {
-      const bytes = await this.buildFileBytes();
-      const handle = await this.fileHandler.saveAsNewHandle(bytes, this._fileName());
-      if (!handle) return false; // user cancelled
-      this._fileHandle.set(handle);
-      this.markSaved('save-as');
-      return true;
-    } finally {
-      this._busy.set(false);
-    }
-  }
-
-  /** Hands the file to the OS share sheet (Web Share API). Primary path on
-   * iOS/iPadOS and many Android browsers when File System Access isn't
-   * available. */
-  async shareUpdated(): Promise<boolean> {
-    this._busy.set(true);
-    try {
-      const bytes = await this.buildFileBytes();
-      const shared = await this.fileHandler.shareFile(bytes, this._fileName());
-      if (shared) this.markSaved('share');
-      return shared;
-    } finally {
-      this._busy.set(false);
-    }
-  }
-
-  /** Plain download fallback - always available. */
-  async downloadUpdated(): Promise<void> {
-    this._busy.set(true);
-    try {
-      const bytes = await this.buildFileBytes();
-      this.fileHandler.downloadFile(bytes, this._fileName());
-      this.markSaved('download');
-    } finally {
-      this._busy.set(false);
-    }
-  }
-
-  private markSaved(method: SaveMethod): void {
-    this._dirty.set(false);
-    this._lastSaveMethod.set(method);
-    this.updateState(
-      (st) => ({
-        ...st,
-        user: { ...st.user, isNew: false, lastExport: new Date().toISOString() },
-      }),
-      false,
-    );
   }
 
   // ----- Mutations ----------------------------------------------------
@@ -514,32 +300,119 @@ export class StateService {
     this.updateState((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
   }
 
+  /** Creating a fixed deposit is money leaving a bank account, so this also
+   * records an "others-out" transaction against that bank for the
+   * principal - same as the other account-opening flows in this file (see
+   * `migrateState`'s "Initial balance" transactions). Uses the "Investment
+   * (Out)" default category when present, but works fine without it. */
   addFixedDeposit(fd: Omit<FixedDeposit, 'id'>): void {
-    this.updateState((s) => ({
-      ...s,
-      fixedDeposits: [...s.fixedDeposits, { ...fd, id: generateId() }],
-    }));
+    const id = generateId();
+    this.updateState((s) => {
+      const bank = s.banks.find((b) => b.id === fd.bankId);
+      const category = s.categories.find(
+        (c) => c.type === 'others-out' && c.name === 'Investment (Out)',
+      );
+      return {
+        ...s,
+        fixedDeposits: [...s.fixedDeposits, { ...fd, id }],
+        transactions: [
+          ...s.transactions,
+          {
+            id: generateId(),
+            fdId: id,
+            date: fd.startDate,
+            amount: fd.amount,
+            type: 'others-out',
+            accountType: 'bank',
+            accountId: fd.bankId,
+            categoryId: category?.id,
+            notes: `Fixed Deposit${bank ? ' - ' + bank.name : ''}`,
+          },
+        ],
+      };
+    });
   }
+
+  /** Patches a fixed deposit and keeps any transaction(s) it previously
+   * generated in sync with the new values. The moment `status` transitions
+   * into 'matured' for the first time, this also records the maturity
+   * payout - principal + interest, credited to `toBankId` (or `bankId` if
+   * the proceeds go back to the same account) - as an "others-in"
+   * transaction, mirroring the opening one `addFixedDeposit` created. */
   updateFixedDeposit(id: string, patch: Partial<FixedDeposit>): void {
-    this.updateState((s) => ({
-      ...s,
-      fixedDeposits: s.fixedDeposits.map((f) => (f.id === id ? { ...f, ...patch, id } : f)),
-    }));
+    this.updateState((s) => {
+      const existing = s.fixedDeposits.find((f) => f.id === id);
+      if (!existing) return s;
+      const updated: FixedDeposit = { ...existing, ...patch, id };
+      const justMatured = existing.status === 'active' && updated.status === 'matured';
+      const destBankId = updated.toBankId || updated.bankId;
+
+      // Keep the opening (others-out) transaction lined up with the FD's
+      // current bank/amount/date, if this FD has one.
+      let transactions = s.transactions.map((t) =>
+        t.fdId === id && t.type === 'others-out'
+          ? { ...t, date: updated.startDate, amount: updated.amount, accountId: updated.bankId }
+          : t,
+      );
+
+      if (justMatured) {
+        const bank = s.banks.find((b) => b.id === destBankId);
+        const category = s.categories.find(
+          (c) => c.type === 'others-in' && c.name === 'Investment (In)',
+        );
+        transactions = [
+          ...transactions,
+          {
+            id: generateId(),
+            fdId: id,
+            date: fdMaturityDate(updated),
+            amount: fdMaturityValue(updated),
+            type: 'others-in',
+            accountType: 'bank',
+            accountId: destBankId,
+            categoryId: category?.id,
+            notes: `Fixed Deposit matured${bank ? ' - ' + bank.name : ''}`,
+          },
+        ];
+      } else {
+        // Already-matured FD edited afterwards (bank/amount/rate/tenure
+        // changed) - keep its maturity transaction in sync too, rather than
+        // leaving it pointing at stale numbers.
+        transactions = transactions.map((t) =>
+          t.fdId === id && t.type === 'others-in'
+            ? {
+                ...t,
+                date: fdMaturityDate(updated),
+                amount: fdMaturityValue(updated),
+                accountId: destBankId,
+              }
+            : t,
+        );
+      }
+
+      return {
+        ...s,
+        fixedDeposits: s.fixedDeposits.map((f) => (f.id === id ? updated : f)),
+        transactions,
+      };
+    });
   }
+
+  /** Deleting a fixed deposit record also removes whatever transaction(s)
+   * it auto-generated, same as removing a bank/wallet/card cascades to
+   * their transactions - otherwise you'd be left with an "others-out"/
+   * "others-in" entry with nothing behind it. */
   removeFixedDeposit(id: string): void {
     this.updateState((s) => ({
       ...s,
       fixedDeposits: s.fixedDeposits.filter((f) => f.id !== id),
+      transactions: s.transactions.filter((t) => t.fdId !== id),
     }));
   }
 
   private requireState(): AppState {
     const s = this._state();
-    if (!s) throw new Error('No file is currently loaded.');
+    if (!s) throw new Error('No account data is currently loaded.');
     return s;
-  }
-
-  private ensureExtension(name: string): string {
-    return name.toLowerCase().endsWith('.spw') ? name : `${name}.spw`;
   }
 }

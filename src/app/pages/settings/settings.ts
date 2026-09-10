@@ -1,82 +1,55 @@
-import { ChangeDetectionStrategy, Component, effect, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
-import { CURRENCIES, Currency } from '../../core/models';
-import { formatRecoveryKey } from '../../core/spw-format.service';
+import { AppState, CURRENCIES, Currency } from '../../core/models';
 import { ThemePreference, ThemeService } from '../../core/theme.service';
 import { CloudAuthService } from '../../core/cloud-auth.service';
-import { CloudBackupService } from '../../core/cloud-backup.service';
+import {
+  SpwFormatService,
+  UnlockCredential,
+  WrongCredentialError,
+} from '../../core/spw-format.service';
+import { FileHandlerService, UserCancelledError } from '../../core/file-handler.service';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
-import { CloudAuthPanelComponent } from '../../shared/cloud-auth-panel';
 
-type PasswordDialog = 'enable' | 'change' | null;
+type ImportCredentialKind = 'password' | 'recovery';
+
+interface PendingImport {
+  name: string;
+  bytes: Uint8Array;
+}
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule, IconComponent, ModalComponent, CloudAuthPanelComponent],
+  imports: [FormsModule, IconComponent, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.html',
   styleUrl: './settings.scss',
 })
 export class SettingsPage {
   readonly currencies = CURRENCIES;
-  readonly passwordDialog = signal<PasswordDialog>(null);
-  readonly password = signal('');
-  readonly confirmPassword = signal('');
-  readonly passwordError = signal<string | null>(null);
-  readonly busy = signal(false);
-  readonly recoveryKeyToShow = signal<string | null>(null);
-  readonly recoveryWarningOpen = signal(false);
 
-  readonly cloudBusy = signal(false);
-  readonly cloudError = signal<string | null>(null);
-  readonly lastBackupLabel = signal<string | null>(null);
+  // ----- Import Legacy File (.spw) ----------------------------------------
+  readonly importBusy = signal(false);
+  readonly importError = signal<string | null>(null);
+  readonly importSuccess = signal<string | null>(null);
+  readonly pendingImport = signal<PendingImport | null>(null);
+  readonly importCredentialKind = signal<ImportCredentialKind>('password');
+  readonly importCredentialValue = signal('');
+
+  // ----- Reset Account Data ------------------------------------------------
+  readonly resetError = signal<string | null>(null);
+  readonly resetSuccess = signal<string | null>(null);
 
   constructor(
     readonly state: StateService,
     readonly theme: ThemeService,
     readonly cloudAuth: CloudAuthService,
-    readonly cloudBackup: CloudBackupService,
-  ) {
-    // Whenever sign-in state (or the open file) changes, look up whether
-    // this file already has a cloud backup on record, so "Last backed up"
-    // is accurate even before the user clicks "Backup Now" this session.
-    effect(() => {
-      const user = this.cloudAuth.user();
-      const filename = this.state.fileName();
-      if (!user) {
-        this.lastBackupLabel.set(null);
-        return;
-      }
-      this.cloudBackup
-        .listBackups()
-        .then((backups) => {
-          const match = backups.find((b) => b.filename === filename);
-          this.lastBackupLabel.set(match ? new Date(match.updatedAt).toLocaleString() : null);
-        })
-        .catch(() => this.lastBackupLabel.set(null));
-    });
-  }
-
-  async backupNow(): Promise<void> {
-    this.cloudBusy.set(true);
-    this.cloudError.set(null);
-    try {
-      await this.cloudBackup.backupNow();
-      const at = this.cloudBackup.lastBackupAt();
-      this.lastBackupLabel.set(at ? new Date(at).toLocaleString() : null);
-    } catch (err) {
-      this.cloudError.set(err instanceof Error ? err.message : 'Backup failed.');
-    } finally {
-      this.cloudBusy.set(false);
-    }
-  }
-
-  formatKey(raw: string): string {
-    return formatRecoveryKey(raw);
-  }
+    private readonly spwFormat: SpwFormatService,
+    private readonly fileHandler: FileHandlerService,
+  ) {}
 
   setCurrency(currency: Currency): void {
     this.state.setCurrency(currency);
@@ -86,73 +59,114 @@ export class SettingsPage {
     this.theme.setPreference(pref);
   }
 
-  openEnableDialog(): void {
-    this.password.set('');
-    this.confirmPassword.set('');
-    this.passwordError.set(null);
-    this.passwordDialog.set('enable');
-  }
+  // ----- Import Legacy File -----------------------------------------------
 
-  openChangeDialog(): void {
-    this.password.set('');
-    this.confirmPassword.set('');
-    this.passwordError.set(null);
-    this.passwordDialog.set('change');
-  }
-
-  closePasswordDialog(): void {
-    this.passwordDialog.set(null);
-  }
-
-  async submitPassword(): Promise<void> {
-    const pw = this.password();
-    if (pw.length < 6) {
-      // 6 chars, not 4 - matches Supabase Auth's own minimum, so this same
-      // password can double as the Cloud Backup sign-in password with no
-      // separate rule to hit.
-      this.passwordError.set('Use at least 6 characters.');
-      return;
-    }
-    if (pw !== this.confirmPassword()) {
-      this.passwordError.set('Passwords do not match.');
-      return;
-    }
-    this.busy.set(true);
-    this.passwordError.set(null);
+  async startImport(): Promise<void> {
+    this.importError.set(null);
+    this.importSuccess.set(null);
+    let opened: { name: string; bytes: Uint8Array };
     try {
-      if (this.passwordDialog() === 'enable') {
-        const recoveryKey = await this.state.enablePasswordProtection(pw);
-        this.recoveryKeyToShow.set(recoveryKey);
-      } else {
-        await this.state.changePassword(pw);
-      }
-      this.passwordDialog.set(null);
+      opened = await this.fileHandler.pickAndOpen();
     } catch (err) {
-      this.passwordError.set(err instanceof Error ? err.message : 'Something went wrong.');
-    } finally {
-      this.busy.set(false);
+      if (err instanceof UserCancelledError) return;
+      this.importError.set(err instanceof Error ? err.message : 'Could not open that file.');
+      return;
     }
-  }
 
-  async regenerateRecoveryKey(): Promise<void> {
-    this.recoveryWarningOpen.set(false);
-    this.busy.set(true);
+    if (this.spwFormat.needsCredential(opened.bytes)) {
+      this.importCredentialValue.set('');
+      this.importCredentialKind.set('password');
+      this.pendingImport.set(opened);
+      return;
+    }
+
     try {
-      const key = await this.state.regenerateRecoveryKey();
-      this.recoveryKeyToShow.set(key);
-    } finally {
-      this.busy.set(false);
+      const decoded = await this.spwFormat.decode(opened.bytes);
+      await this.applyImport(decoded.state);
+    } catch (err) {
+      this.importError.set(
+        err instanceof Error ? err.message : 'That file could not be read as a SparrowFi file.',
+      );
     }
   }
 
-  disableProtection(): void {
-    if (!confirm('Remove password protection? The file will be saved without encryption.')) return;
-    this.state.disablePasswordProtection();
+  cancelImportUnlock(): void {
+    this.pendingImport.set(null);
+    this.importCredentialValue.set('');
   }
 
-  copyRecoveryKey(): void {
-    const key = this.recoveryKeyToShow();
-    if (!key) return;
-    navigator.clipboard?.writeText(this.formatKey(key)).catch(() => {});
+  async submitImportCredential(): Promise<void> {
+    const pending = this.pendingImport();
+    const value = this.importCredentialValue().trim();
+    if (!pending || !value) return;
+    this.importBusy.set(true);
+    this.importError.set(null);
+    try {
+      const credential: UnlockCredential = { kind: this.importCredentialKind(), value };
+      const decoded = await this.spwFormat.decode(pending.bytes, credential);
+      this.pendingImport.set(null);
+      this.importCredentialValue.set('');
+      await this.applyImport(decoded.state);
+    } catch (err) {
+      if (err instanceof WrongCredentialError) {
+        this.importError.set(err.message);
+      } else {
+        this.importError.set(err instanceof Error ? err.message : 'Could not read that file.');
+      }
+    } finally {
+      this.importBusy.set(false);
+    }
+  }
+
+  // ----- Reset Account Data ------------------------------------------------
+
+  async resetData(): Promise<void> {
+    this.resetError.set(null);
+    this.resetSuccess.set(null);
+    const ok = confirm(
+      'This permanently deletes everything in your account - banks, wallets, cards, ' +
+        'transactions, fixed deposits, categories - and cannot be undone; there is no ' +
+        'recovery key. Continue?',
+    );
+    if (!ok) return;
+    try {
+      await this.state.resetData();
+      this.resetSuccess.set('Your account data has been reset.');
+    } catch (err) {
+      this.resetError.set(err instanceof Error ? err.message : 'Could not reset your data.');
+    }
+  }
+
+  private async applyImport(imported: AppState): Promise<void> {
+    const current = this.state.state();
+    const hasExistingData =
+      !!current &&
+      (current.banks.length > 0 ||
+        current.wallets.length > 0 ||
+        current.cards.length > 0 ||
+        current.transactions.length > 0 ||
+        current.fixedDeposits.length > 0);
+    if (hasExistingData) {
+      const ok = confirm(
+        'Importing will replace all data currently in your account. This cannot be undone. Continue?',
+      );
+      if (!ok) return;
+    }
+
+    this.importBusy.set(true);
+    this.importError.set(null);
+    try {
+      this.state.replaceState(imported);
+      await this.state.save();
+      this.importSuccess.set('Imported and saved to your account.');
+    } catch (err) {
+      this.importError.set(
+        err instanceof Error
+          ? `Imported, but saving to your account failed: ${err.message}`
+          : 'Imported, but saving to your account failed.',
+      );
+    } finally {
+      this.importBusy.set(false);
+    }
   }
 }

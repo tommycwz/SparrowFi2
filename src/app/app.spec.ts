@@ -16,7 +16,7 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('shows the launcher when no file is loaded', async () => {
+  it('shows the launcher when not signed in', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;

@@ -4,7 +4,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <sf-icon name="layers" [size]="22" />
+        <img src="icons/icon-192x192.png" alt="" class="brand-logo" />
         <span>SparrowFi</span>
       </div>
       <nav>
@@ -15,9 +15,9 @@
           </a>
         }
       </nav>
-      <button type="button" class="btn btn-secondary btn-block close-btn" (click)="closeFile()">
-        <sf-icon name="arrow-left" [size]="16" />
-        Close File
+      <button type="button" class="btn btn-secondary btn-block close-btn" (click)="signOut()">
+        <sf-icon name="log-out" [size]="16" />
+        Sign Out
       </button>
     </aside>
 
@@ -33,57 +33,17 @@
         </button>
 
         <div class="file-info">
-          <sf-icon name="folder-open" [size]="16" />
-          <span class="file-name">{{ state.fileName() }}</span>
+          <sf-icon name="cloud" [size]="16" />
+          <span class="file-name">{{ cloudAuth.user()?.username }}</span>
           @if (state.dirty()) {
             <span class="dirty-dot" title="Unsaved changes"></span>
           }
         </div>
 
-        <div class="save-group">
-          <button type="button" class="btn btn-primary" [disabled]="state.busy()" (click)="runPrimarySave()">
-            <sf-icon [name]="primaryIcon()" [size]="16" />
-            {{ state.busy() ? 'Saving…' : primaryLabel() }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary menu-toggle"
-            (click)="showSaveMenu.set(!showSaveMenu())"
-            aria-label="More save options"
-          >
-            <sf-icon name="chevron-down" [size]="16" />
-          </button>
-
-          @if (showSaveMenu()) {
-            <div class="save-menu" (click)="$event.stopPropagation()">
-              @if (state.canWriteToOriginal()) {
-                <button type="button" (click)="saveToOriginal()">
-                  <sf-icon name="save" [size]="16" /> Save to Original
-                </button>
-              }
-              @if (state.supportsFileSystemAccess) {
-                <button type="button" (click)="saveAs()">
-                  <sf-icon name="save" [size]="16" /> Save As…
-                </button>
-              }
-              @if (state.supportsShareFiles) {
-                <button type="button" (click)="share()">
-                  <sf-icon name="share" [size]="16" /> Share / Save to Files
-                </button>
-              }
-              <button type="button" (click)="download()">
-                <sf-icon name="download" [size]="16" /> Download a Copy
-              </button>
-              @if (cloudAuth.configured) {
-                <div class="save-menu-divider"></div>
-                <button type="button" (click)="backupToCloud()" [disabled]="cloudBackup.busy()">
-                  <sf-icon name="cloud" [size]="16" />
-                  {{ cloudBackup.busy() ? 'Backing up…' : 'Backup to Cloud' }}
-                </button>
-              }
-            </div>
-          }
-        </div>
+        <button type="button" class="btn btn-primary" [disabled]="state.busy()" (click)="save()">
+          <sf-icon name="save" [size]="16" />
+          {{ state.busy() ? 'Saving…' : 'Save' }}
+        </button>
       </header>
 
       <main class="content">
@@ -101,7 +61,7 @@
   <div class="mobile-drawer-backdrop" [class.open]="mobileNavOpen()"></div>
   <aside class="mobile-drawer" [class.open]="mobileNavOpen()">
     <div class="brand">
-      <sf-icon name="layers" [size]="22" />
+      <img src="icons/icon-192x192.png" alt="" class="brand-logo" />
       <span>SparrowFi</span>
       <button type="button" class="icon-btn drawer-close" (click)="closeMobileNav()" aria-label="Close menu">
         <sf-icon name="x" [size]="20" />
@@ -115,9 +75,9 @@
         </a>
       }
     </nav>
-    <button type="button" class="btn btn-secondary btn-block close-btn" (click)="closeFile()">
-      <sf-icon name="arrow-left" [size]="16" />
-      Close File
+    <button type="button" class="btn btn-secondary btn-block close-btn" (click)="signOut()">
+      <sf-icon name="log-out" [size]="16" />
+      Sign Out
     </button>
   </aside>
 

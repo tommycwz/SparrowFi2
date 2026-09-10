@@ -1,6 +1,8 @@
 /**
- * Low-level cryptographic helpers backing the SPW3 (password-protected)
- * file format described in `Sparrow.md`.
+ * Low-level cryptographic helpers. These back two things: `CloudDataService`,
+ * which encrypts/decrypts the account's data before it goes to/comes from
+ * Supabase, and `SpwFormatService`'s legacy SPW3 (password-protected) file
+ * format, kept only for the one-time "Import Legacy File" flow.
  *
  * Everything here runs through the browser's native Web Crypto API
  * (`crypto.subtle`). Nothing in this file ever performs network I/O -

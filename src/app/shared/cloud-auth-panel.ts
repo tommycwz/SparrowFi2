@@ -6,11 +6,11 @@ import { IconComponent } from './icon';
 type Mode = 'sign-in' | 'sign-up';
 
 /**
- * Sign in / sign up / signed-in-as display for Cloud Backup, shared
- * between the Settings page (backup) and the Launcher page (restore) so
- * both talk to the same `CloudAuthService` session through one UI. Renders
- * a "not set up yet" note instead of a form when the Supabase project
- * hasn't been configured (see `supabase.config.ts`).
+ * Sign in / sign up / signed-in-as display - this is the whole front door
+ * to SparrowFi now, since there's no local-file mode to fall back to.
+ * Renders a "not set up yet" note instead of a form when the Supabase
+ * project hasn't been configured (see `supabase.config.ts`), in which case
+ * the app can't be used at all yet.
  */
 @Component({
   selector: 'sf-cloud-auth-panel',
@@ -19,9 +19,12 @@ type Mode = 'sign-in' | 'sign-up';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!auth.configured) {
-      <div class="banner banner-info">
-        <sf-icon name="info" [size]="16" />
-        <span>Cloud Backup isn't set up yet.</span>
+      <div class="banner banner-danger">
+        <sf-icon name="alert-triangle" [size]="16" />
+        <span
+          >SparrowFi isn't set up yet - a Supabase project needs to be configured before anyone can
+          sign in. See <code>supabase.config.ts</code>.</span
+        >
       </div>
     } @else if (!auth.ready()) {
       <p class="muted">Checking sign-in status…</p>
@@ -63,14 +66,16 @@ type Mode = 'sign-in' | 'sign-up';
             (ngModelChange)="password.set($event)"
             (keydown.enter)="submit()"
             [autocomplete]="mode() === 'sign-up' ? 'new-password' : 'current-password'"
-            placeholder="Same password that protects this file"
+            placeholder="At least 6 characters"
           />
         </label>
       </div>
       <p class="muted hint">
-        Use the same password you use to protect your .spw file - no need for a second one. No
-        email required; this account only exists to keep your backups apart from anyone else's.
+        This password both signs you in and encrypts your data before it ever leaves your browser
+        - no email required, and no separate encryption password to remember. There's no password
+        recovery, so keep it somewhere safe: forgetting it means losing access to your data.
       </p>
+      <br>
 
       @if (error()) {
         <div class="banner banner-danger">

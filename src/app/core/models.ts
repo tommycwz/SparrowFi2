@@ -1,10 +1,11 @@
 /**
  * SparrowFi application state model.
  *
- * This mirrors the JSON schema documented in `Sparrow.md` exactly. Every
- * `.spw` file (SPW1/SPW2/SPW3) decodes to this shape after decompression /
- * decryption, and every save re-serializes this shape before it is encoded
- * back to bytes.
+ * This is the shape stored (as encrypted JSON) in Supabase - one record
+ * per signed-in account, loaded on sign-in and saved back on demand. It's
+ * also still what a legacy `.spw` file (SPW1/SPW2/SPW3) decodes to, for
+ * the one-time "Import Legacy File" flow in Settings that migrates an old
+ * local file into your account.
  */
 
 export type Currency = 'myr' | 'usd' | 'eur' | 'gbp' | 'sgd' | 'aud';
@@ -22,7 +23,6 @@ export interface UserInfo {
 
 export interface Settings {
   currency: Currency;
-  passwordEnabled: boolean;
 }
 
 export interface Bank {
@@ -62,6 +62,12 @@ export interface Transaction {
   accountId?: string;
   categoryId?: string;
   notes?: string;
+  /** Set only on a transaction StateService auto-created for a fixed
+   * deposit (opening the FD, or its maturity payout) - links it back to
+   * `FixedDeposit.id` so editing/deleting that FD keeps this transaction in
+   * sync instead of leaving an orphaned entry. Absent on every other
+   * transaction. */
+  fdId?: string;
 }
 
 export interface FixedDeposit {
@@ -141,7 +147,7 @@ export const DEFAULT_CATEGORY_COLORS = [
 export function createEmptyState(): AppState {
   return {
     user: { isNew: true, lastExport: null },
-    settings: { currency: 'myr', passwordEnabled: false },
+    settings: { currency: 'myr' },
     banks: [],
     wallets: [],
     cards: [],

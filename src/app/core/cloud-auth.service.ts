@@ -11,27 +11,27 @@ const USERNAME_PATTERN = /^[a-z0-9_.-]+$/i;
 /**
  * Thin wrapper around a handful of Postgres functions (see
  * `supabase/schema.sql`) that implement a small, self-contained username +
- * password login. This does NOT use Supabase Auth - no email address, no
- * confirmation links, none of that. Supabase Auth's own email sending
- * turned out to be a dead end for this app: it refuses fake/synthetic
- * domains outright, and even with a real address its shared email service
- * has a very low send-rate limit that testing kept tripping. A plain
- * username/password table checked by a database function sidesteps both
- * problems entirely, and it's what was asked for.
+ * password login - this is the front door to the whole app now, since
+ * there is no local-file mode anymore. It does NOT use Supabase Auth - no
+ * email address, no confirmation links, none of that. Supabase Auth's own
+ * email sending turned out to be a dead end for this app: it refuses
+ * fake/synthetic domains outright, and even with a real address its
+ * shared email service has a very low send-rate limit that testing kept
+ * tripping. A plain username/password table checked by a database
+ * function sidesteps both problems entirely.
  *
  * There's no session token here. "Signed in" just means this service is
  * holding a username + password in memory that `account_login` has
- * already verified once; every backup/restore call re-sends both so the
+ * already verified once; every load/save call re-sends both so the
  * database re-checks them itself each time (see `credentials()`) rather
  * than trusting a client-side flag. Nothing is written to disk or
- * localStorage, so signing in is a per-app-load thing - same as unlocking
- * a password-protected file locally, which is exactly the password this
- * reuses.
+ * localStorage, so signing in is a per-app-load thing. This same password
+ * also derives the key that encrypts/decrypts your data client-side (see
+ * `CloudDataService`) - there is no separate encryption password.
  *
  * `@supabase/supabase-js` is loaded via a dynamic `import()` the first
- * time `getClient()` runs (i.e. the first time someone opens the Cloud
- * Backup UI), not at app startup, so every other page never downloads it
- * and never makes a network request. `SupabaseClient` above is a
+ * time `getClient()` runs (i.e. as soon as the Launcher's sign-in form
+ * renders), not eagerly at app startup. `SupabaseClient` above is a
  * type-only import and is erased at build time.
  */
 @Injectable({ providedIn: 'root' })
@@ -104,8 +104,8 @@ export class CloudAuthService {
     this.password = '';
   }
 
-  /** The username/password pair to send with a backup RPC call.
-   * `CloudBackupService` uses this instead of reaching into private
+  /** The username/password pair to send with a load/save RPC call.
+   * `CloudDataService` uses this instead of reaching into private
    * state directly. Throws if not signed in. */
   credentials(): { username: string; password: string } {
     const user = this._user();

@@ -33,7 +33,6 @@ export function migrateState(raw: unknown): AppState {
     },
     settings: {
       currency: (src.settings?.currency as Currency) ?? 'myr',
-      passwordEnabled: !!src.settings?.passwordEnabled,
     },
     banks: Array.isArray(src.banks) ? src.banks.map(normalizeBank) : [],
     wallets: Array.isArray(src.wallets) ? src.wallets.map(normalizeWallet) : [],

@@ -1,15 +1,7 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  HostListener,
-  computed,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { StateService } from './core/state.service';
-import { FileHandlerService } from './core/file-handler.service';
 import { CloudAuthService } from './core/cloud-auth.service';
-import { CloudBackupService } from './core/cloud-backup.service';
 import { IconComponent } from './shared/icon';
 import { LauncherPage } from './pages/launcher/launcher';
 
@@ -38,35 +30,15 @@ const NAV_ITEMS: NavItem[] = [
 })
 export class App {
   readonly navItems = NAV_ITEMS;
-  readonly showSaveMenu = signal(false);
   readonly mobileNavOpen = signal(false);
   readonly toast = signal<{ text: string; tone: 'success' | 'info' | 'danger' } | null>(null);
-  readonly isIOS: boolean;
-
-  readonly primaryLabel = computed(() => {
-    if (this.state.canWriteToOriginal()) return 'Save';
-    if (this.state.supportsFileSystemAccess) return 'Save As…';
-    if (this.state.supportsShareFiles) return 'Save / Share';
-    return 'Download';
-  });
-
-  readonly primaryIcon = computed(() => {
-    if (this.state.canWriteToOriginal()) return 'save';
-    if (this.state.supportsFileSystemAccess) return 'save';
-    if (this.state.supportsShareFiles) return 'share';
-    return 'download';
-  });
 
   private toastTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     readonly state: StateService,
     readonly cloudAuth: CloudAuthService,
-    readonly cloudBackup: CloudBackupService,
-    private readonly fileHandler: FileHandlerService,
-  ) {
-    this.isIOS = fileHandler.isLikelyIOS();
-  }
+  ) {}
 
   @HostListener('window:beforeunload', ['$event'])
   onBeforeUnload(event: BeforeUnloadEvent): void {
@@ -76,18 +48,15 @@ export class App {
     }
   }
 
-  /** Closes the save-options menu and/or the mobile nav drawer on any click
-   * outside them, without an overlay click-catcher div (a full-screen
-   * element in its own stacking context can end up covering the very menu
-   * it's meant to sit behind - see the mobile-drawer backdrop, which is
-   * purely visual and `pointer-events: none` for the same reason). */
+  /** Closes the mobile nav drawer on any click outside it, without an
+   * overlay click-catcher div (a full-screen element in its own stacking
+   * context can end up covering the very menu it's meant to sit behind -
+   * see the mobile-drawer backdrop, which is purely visual and
+   * `pointer-events: none` for the same reason). */
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     const target = event.target as HTMLElement | null;
     if (!target) return;
-    if (this.showSaveMenu() && !target.closest('.save-group')) {
-      this.showSaveMenu.set(false);
-    }
     if (this.mobileNavOpen() && !target.closest('.mobile-drawer, .hamburger-btn')) {
       this.mobileNavOpen.set(false);
     }
@@ -101,87 +70,23 @@ export class App {
     this.mobileNavOpen.set(false);
   }
 
-  async runPrimarySave(): Promise<void> {
-    if (this.state.canWriteToOriginal()) {
-      await this.saveToOriginal();
-    } else if (this.state.supportsFileSystemAccess) {
-      await this.saveAs();
-    } else if (this.state.supportsShareFiles) {
-      await this.share();
-    } else {
-      await this.download();
-    }
-  }
-
-  async saveToOriginal(): Promise<void> {
-    this.showSaveMenu.set(false);
+  async save(): Promise<void> {
     try {
-      await this.state.saveToOriginal();
-      this.showToast(`Saved to ${this.state.fileName()}.`, 'success');
+      await this.state.save();
+      this.showToast('Saved.', 'success');
     } catch (err) {
-      this.showToast(err instanceof Error ? err.message : 'Could not save the file.', 'danger');
+      this.showToast(err instanceof Error ? err.message : 'Could not save.', 'danger');
     }
   }
 
-  async saveAs(): Promise<void> {
-    this.showSaveMenu.set(false);
-    const ok = await this.state.saveAs();
-    if (ok) this.showToast(`Saved as ${this.state.fileName()}.`, 'success');
-  }
-
-  async share(): Promise<void> {
-    this.showSaveMenu.set(false);
-    const ok = await this.state.shareUpdated();
-    if (ok) {
-      this.showToast(
-        this.isIOS
-          ? 'Shared. Choose "Save to Files" and pick the original file to replace it.'
-          : 'Shared successfully.',
-        'success',
-      );
-    }
-  }
-
-  /** "Backup to Cloud" in the save menu - lets a signed-in user push a
-   * backup from anywhere in the app, not just the Settings page. Reuses
-   * the exact same `CloudBackupService.backupNow()` Settings uses; this is
-   * just a shortcut to it. */
-  async backupToCloud(): Promise<void> {
-    this.showSaveMenu.set(false);
-    if (!this.cloudAuth.user()) {
-      this.showToast('Sign in to Cloud Backup from Settings first.', 'info');
-      return;
-    }
-    if (!this.state.isPasswordProtected()) {
-      this.showToast('Turn on Password Protection in Settings before backing up to the cloud.', 'info');
-      return;
-    }
-    try {
-      await this.cloudBackup.backupNow();
-      this.showToast('Backed up to the cloud.', 'success');
-    } catch (err) {
-      this.showToast(err instanceof Error ? err.message : 'Cloud backup failed.', 'danger');
-    }
-  }
-
-  async download(): Promise<void> {
-    this.showSaveMenu.set(false);
-    await this.state.downloadUpdated();
-    this.showToast(
-      this.isIOS
-        ? `Downloaded ${this.state.fileName()}. Open the Files app to replace your original file.`
-        : `Downloaded ${this.state.fileName()}.`,
-      'success',
-    );
-  }
-
-  closeFile(): void {
+  signOut(): void {
     if (this.state.dirty()) {
-      const ok = confirm('You have unsaved changes. Close this file anyway?');
+      const ok = confirm('You have unsaved changes. Sign out anyway?');
       if (!ok) return;
     }
     this.mobileNavOpen.set(false);
-    this.state.closeFile();
+    this.state.signOut();
+    this.cloudAuth.signOut();
   }
 
   private showToast(text: string, tone: 'success' | 'info' | 'danger'): void {

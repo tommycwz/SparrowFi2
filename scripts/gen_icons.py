@@ -1,90 +1,62 @@
-"""Generates SparrowFi's PWA app icons.
+"""Generates SparrowFi's PWA app icons (favicon, apple-touch-icon, and the
+manifest's icon-*.png set) from the brand artwork at
+`scripts/assets/sparrow-source.png` - a circular sparrow badge, replacing the
+earlier programmatically-drawn blue arrow mark. Pure local image resizing -
+no network calls.
 
-Draws a simple brand mark (a rounded-square in the app's accent blue with a
-white ascending-arrow glyph, representing growth) at each size Angular's PWA
-schematic expects, plus a maskable-safe variant and the favicon. Pure local
-image generation - no network calls, no external assets.
+Re-run this after swapping in new artwork: `python3 scripts/gen_icons.py`.
 """
-from PIL import Image, ImageDraw
-import math
+from PIL import Image
 
-ACCENT = (29, 78, 216, 255)  # matches --accent in styles.scss
-WHITE = (255, 255, 255, 255)
-
+SOURCE = "scripts/assets/sparrow-source.png"
 SIZES = [72, 96, 128, 144, 152, 192, 384, 512]
 OUT_DIR = "public/icons"
+BACKGROUND = (255, 255, 255, 255)  # white - the source has transparent
+# corners around its circular badge, and both maskable icon safety (OS
+# masks shouldn't reveal an unpredictable void) and favicon legibility at
+# tiny sizes want an opaque backing square rather than transparency.
 
 
-def rounded_square(size: int, radius_ratio: float = 0.22) -> Image.Image:
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    radius = int(size * radius_ratio)
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=radius, fill=ACCENT)
+def load_master() -> Image.Image:
+    img = Image.open(SOURCE).convert("RGBA")
+    # Pillow's default resampling for a large downsize benefits from a
+    # square power-of-two-ish source; 1024x1024 in is plenty for a 512 max
+    # output size.
     return img
 
 
-def draw_arrow(draw: ImageDraw.ImageDraw, size: int, safe_ratio: float) -> None:
-    # An ascending arrow (shaft + head) drawn inside a safe_ratio-sized box
-    # centered on the canvas, so it survives maskable-icon center-cropping.
-    # All coordinates below are normalized fractions (0..1) of that box.
-    box = size * safe_ratio
-    ox = (size - box) / 2
-    oy = (size - box) / 2
-
-    def pt(x, y):
-        return (ox + x * box, oy + (1 - y) * box)
-
-    shaft_w = 0.16  # fraction of the box
-    x0, y0 = 0.10, 0.10
-    x1, y1 = 0.62, 0.62
-    dx, dy = x1 - x0, y1 - y0
-    length = math.hypot(dx, dy)
-    nx, ny = -dy / length * (shaft_w / 2), dx / length * (shaft_w / 2)
-    shaft = [
-        pt(x0 + nx, y0 + ny),
-        pt(x1 + nx, y1 + ny),
-        pt(x1 - nx, y1 - ny),
-        pt(x0 - nx, y0 - ny),
-    ]
-    draw.polygon(shaft, fill=WHITE)
-
-    # Arrow head at the top-right end: an isoceles triangle pointing along
-    # the same (dx, dy) direction as the shaft, not axis-aligned.
-    ux, uy = dx / length, dy / length  # unit vector along the shaft
-    px, py = -uy, ux  # perpendicular unit vector
-    head_len = 0.30  # fraction of the box
-    head_w = 0.34
-    tip_x, tip_y = 0.90, 0.90
-    back_x, back_y = tip_x - ux * head_len, tip_y - uy * head_len
-    tip = pt(tip_x, tip_y)
-    base_a = pt(back_x + px * head_w / 2, back_y + py * head_w / 2)
-    base_b = pt(back_x - px * head_w / 2, back_y - py * head_w / 2)
-    draw.polygon([tip, base_a, base_b], fill=WHITE)
-
-
-def make_icon(size: int) -> Image.Image:
-    img = rounded_square(size)
-    draw = ImageDraw.Draw(img)
-    draw_arrow(draw, size, safe_ratio=0.62)
-    return img
+def flatten(img: Image.Image, size: int) -> Image.Image:
+    resized = img.resize((size, size), Image.LANCZOS)
+    canvas = Image.new("RGBA", (size, size), BACKGROUND)
+    canvas.paste(resized, (0, 0), resized)
+    return canvas.convert("RGB")
 
 
 def main():
     import os
 
+    master = load_master()
     os.makedirs(OUT_DIR, exist_ok=True)
+
     for s in SIZES:
-        icon = make_icon(s)
-        icon.save(f"{OUT_DIR}/icon-{s}x{s}.png")
+        flatten(master, s).save(f"{OUT_DIR}/icon-{s}x{s}.png")
 
-    # Apple touch icon (iOS ignores transparency/rounded corners itself).
-    make_icon(180).save("public/apple-touch-icon.png")
+    # Apple touch icon - iOS handles transparency inconsistently, so this is
+    # always flattened onto an opaque background.
+    flatten(master, 180).save("public/apple-touch-icon.png")
 
-    # Favicon (multi-res .ico).
-    fav = make_icon(64)
-    fav.save("public/favicon.ico", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+    # Favicon (multi-res .ico) - resample at each target size explicitly
+    # rather than letting Pillow downscale one bitmap, so small sizes stay
+    # legible.
+    fav_sizes = [16, 32, 48, 64]
+    fav_images = [flatten(master, s) for s in fav_sizes]
+    fav_images[0].save(
+        "public/favicon.ico",
+        sizes=[(s, s) for s in fav_sizes],
+        append_images=fav_images[1:],
+    )
 
-    print("Generated", len(SIZES), "icons + apple-touch-icon + favicon")
+    print("Generated", len(SIZES), "icons + apple-touch-icon + favicon from", SOURCE)
 
 
 if __name__ == "__main__":

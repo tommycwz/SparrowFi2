@@ -47,93 +47,50 @@
 
   <section class="card stack">
     <div class="section-title">
-      <sf-icon [name]="state.isPasswordProtected() ? 'lock' : 'unlock'" [size]="18" />
-      <h2>Password Protection</h2>
+      <sf-icon name="cloud" [size]="18" />
+      <h2>Account</h2>
     </div>
-
-    @if (!state.isPasswordProtected()) {
-      <p class="muted">
-        Encrypt this file with a password (AES-256). You'll get a one-time recovery key in case
-        you forget it - write it down somewhere safe.
-      </p>
-      <button type="button" class="btn btn-primary btn-block" (click)="openEnableDialog()">
-        Protect With a Password
-      </button>
-    } @else {
-      <div class="banner banner-info">
-        <sf-icon name="info" [size]="16" />
-        <span>This file is encrypted. Remember to save after making any change below.</span>
+    @if (cloudAuth.user(); as user) {
+      <div class="kv">
+        <span class="muted">Signed in as</span><span>{{ user.username }}</span>
       </div>
-      <button type="button" class="btn btn-secondary btn-block" (click)="openChangeDialog()">
-        Change Password
-      </button>
-      <button
-        type="button"
-        class="btn btn-secondary btn-block"
-        (click)="recoveryWarningOpen.set(true)"
-      >
-        Regenerate Recovery Key
-      </button>
-      <button type="button" class="btn btn-danger btn-block" (click)="disableProtection()">
-        Remove Password Protection
-      </button>
     }
+    <div class="kv">
+      <span class="muted">Unsaved changes</span><span>{{ state.dirty() ? 'Yes' : 'No' }}</span>
+    </div>
+    <p class="muted">
+      Sign out from the menu on the left. Your data is always encrypted with your account
+      password before it's saved - there's no separate password to set up.
+    </p>
   </section>
 
   <section class="card stack">
     <div class="section-title">
-      <sf-icon name="cloud" [size]="18" />
-      <h2>Cloud Backup</h2>
+      <sf-icon name="upload" [size]="18" />
+      <h2>Import Legacy File</h2>
     </div>
+    <p class="muted">
+      Have an old local <code>.spw</code> file from before SparrowFi moved to Supabase? Import it
+      here - this replaces everything currently in your account with what's in that file, then
+      saves it.
+    </p>
+    <button type="button" class="btn btn-secondary btn-block" (click)="startImport()" [disabled]="importBusy()">
+      <sf-icon name="upload" [size]="16" />
+      {{ importBusy() ? 'Importing…' : 'Choose a .spw File…' }}
+    </button>
 
-    @if (cloudAuth.configured && !cloudAuth.user() && !state.isPasswordProtected()) {
-      <p class="muted">
-        Turn on Password Protection above first, then sign in below using that same password -
-        one password covers both.
-      </p>
+    @if (importSuccess()) {
+      <div class="banner banner-info">
+        <sf-icon name="info" [size]="16" />
+        <span>{{ importSuccess() }}</span>
+      </div>
     }
-
-    <sf-cloud-auth-panel />
-
-    @if (cloudAuth.configured && cloudAuth.user()) {
-      @if (!state.isPasswordProtected()) {
-        <div class="banner banner-info">
-          <sf-icon name="info" [size]="16" />
-          <span>Turn on Password Protection above before backing this file up to the cloud.</span>
-        </div>
-      } @else {
-        <button
-          type="button"
-          class="btn btn-primary btn-block"
-          (click)="backupNow()"
-          [disabled]="cloudBusy()"
-        >
-          {{ cloudBusy() ? 'Backing up…' : 'Backup Now' }}
-        </button>
-        <p class="muted">
-          {{ lastBackupLabel() ? 'Last backed up ' + lastBackupLabel() : 'Not backed up yet.' }}
-        </p>
-      }
-
-      @if (cloudError()) {
-        <div class="banner banner-danger">
-          <sf-icon name="alert-triangle" [size]="16" />
-          <span>{{ cloudError() }}</span>
-        </div>
-      }
+    @if (importError()) {
+      <div class="banner banner-danger">
+        <sf-icon name="alert-triangle" [size]="16" />
+        <span>{{ importError() }}</span>
+      </div>
     }
-  </section>
-
-  <section class="card stack">
-    <h2>About This File</h2>
-    <div class="kv"><span class="muted">File name</span><span>{{ state.fileName() }}</span></div>
-    <div class="kv">
-      <span class="muted">Encryption</span
-      ><span>{{ state.isPasswordProtected() ? 'AES-256-GCM (SPW3)' : 'None (SPW2)' }}</span>
-    </div>
-    <div class="kv">
-      <span class="muted">Unsaved changes</span><span>{{ state.dirty() ? 'Yes' : 'No' }}</span>
-    </div>
   </section>
 
   <section class="card stack privacy">
@@ -142,79 +99,100 @@
       <h2>Privacy</h2>
     </div>
     <p class="muted">
-      By default, SparrowFi has no server or backend - this file is only ever read and written
-      on this device. The only exception is the optional Cloud Backup above: if you sign in and
-      back up, the same password-encrypted bytes this file is already saved as get uploaded to
-      your Supabase project. Nothing is ever uploaded unencrypted, and nothing is uploaded at
-      all unless you sign in and press "Backup Now" yourself.
+      Your data is encrypted in the browser - with a key derived from your account password -
+      before it's ever sent to Supabase. Supabase only ever stores ciphertext; nothing leaves your
+      device unencrypted.
     </p>
+  </section>
+
+  <section class="card stack danger-zone">
+    <div class="section-title">
+      <sf-icon name="alert-triangle" [size]="18" />
+      <h2>Danger Zone</h2>
+    </div>
+    <p class="muted">
+      Permanently erases everything in your account - banks, wallets, cards, transactions, fixed
+      deposits, and categories - and starts it over empty. Your username and password are
+      unaffected. This cannot be undone; there is no recovery key.
+    </p>
+    <button
+      type="button"
+      class="btn btn-danger btn-block"
+      (click)="resetData()"
+      [disabled]="state.busy()"
+    >
+      <sf-icon name="trash" [size]="16" />
+      {{ state.busy() ? 'Resetting…' : 'Reset Account Data' }}
+    </button>
+
+    @if (resetSuccess()) {
+      <div class="banner banner-info">
+        <sf-icon name="info" [size]="16" />
+        <span>{{ resetSuccess() }}</span>
+      </div>
+    }
+    @if (resetError()) {
+      <div class="banner banner-danger">
+        <sf-icon name="alert-triangle" [size]="16" />
+        <span>{{ resetError() }}</span>
+      </div>
+    }
   </section>
 </div>
 
-@if (passwordDialog(); as mode) {
-  <sf-modal
-    [title]="mode === 'enable' ? 'Set a Password' : 'Change Password'"
-    [dismissible]="!busy()"
-    (close)="closePasswordDialog()"
-  >
-    <div class="field-row">
+@if (pendingImport(); as pending) {
+  <sf-modal title="This File Is Encrypted" [dismissible]="!importBusy()" (close)="cancelImportUnlock()">
+    <p class="muted" style="margin-bottom: 1rem">
+      <strong>{{ pending.name }}</strong> is password-protected. Enter its password, or its
+      recovery key if you've forgotten it - this is the local file's own password, unrelated to
+      your account password.
+    </p>
+
+    <div class="segmented">
+      <button
+        type="button"
+        [class.active]="importCredentialKind() === 'password'"
+        (click)="importCredentialKind.set('password')"
+      >
+        Password
+      </button>
+      <button
+        type="button"
+        [class.active]="importCredentialKind() === 'recovery'"
+        (click)="importCredentialKind.set('recovery')"
+      >
+        Recovery Key
+      </button>
+    </div>
+
+    <div class="field-row" style="margin-top: 1rem">
       <label>
-        {{ mode === 'enable' ? 'New password' : 'New password' }}
+        {{ importCredentialKind() === 'password' ? 'Password' : 'Recovery key' }}
         <input
-          type="password"
-          autocomplete="new-password"
-          [ngModel]="password()"
-          (ngModelChange)="password.set($event)"
-        />
-      </label>
-      <label>
-        Confirm password
-        <input
-          type="password"
-          autocomplete="new-password"
-          [ngModel]="confirmPassword()"
-          (ngModelChange)="confirmPassword.set($event)"
-          (keydown.enter)="submitPassword()"
+          [type]="importCredentialKind() === 'password' ? 'password' : 'text'"
+          [ngModel]="importCredentialValue()"
+          (ngModelChange)="importCredentialValue.set($event)"
+          (keydown.enter)="submitImportCredential()"
+          [placeholder]="importCredentialKind() === 'password' ? 'Enter password' : 'ABC123-DEF456-GHI789'"
+          autocomplete="off"
         />
       </label>
     </div>
-    @if (passwordError()) {
-      <div class="banner banner-danger">
+
+    @if (importError()) {
+      <div class="banner banner-danger" style="margin-bottom: 1rem">
         <sf-icon name="alert-triangle" [size]="16" />
-        <span>{{ passwordError() }}</span>
+        <span>{{ importError() }}</span>
       </div>
     }
-    <button type="button" class="btn btn-primary btn-block" [disabled]="busy()" (click)="submitPassword()">
-      {{ busy() ? 'Working…' : 'Continue' }}
-    </button>
-  </sf-modal>
-}
 
-@if (recoveryWarningOpen()) {
-  <sf-modal title="Regenerate Recovery Key?" (close)="recoveryWarningOpen.set(false)">
-    <p class="muted" style="margin-bottom: 1rem">
-      Your current recovery key will stop working. Make sure you save the new one.
-    </p>
-    <button type="button" class="btn btn-danger btn-block" (click)="regenerateRecoveryKey()">
-      Yes, Generate a New Key
+    <button
+      type="button"
+      class="btn btn-primary btn-block"
+      (click)="submitImportCredential()"
+      [disabled]="importBusy() || !importCredentialValue().trim()"
+    >
+      {{ importBusy() ? 'Unlocking…' : 'Unlock and Import' }}
     </button>
-  </sf-modal>
-}
-
-@if (recoveryKeyToShow(); as key) {
-  <sf-modal title="Your Recovery Key" [dismissible]="false">
-    <p class="muted" style="margin-bottom: 1rem">
-      Save this somewhere safe - it's the only way back into this file if you forget your
-      password. It will not be shown again.
-    </p>
-    <div class="recovery-key">{{ formatKey(key) }}</div>
-    <div class="stack" style="margin-top: 1rem">
-      <button type="button" class="btn btn-secondary btn-block" (click)="copyRecoveryKey()">
-        <sf-icon name="copy" [size]="16" /> Copy to Clipboard
-      </button>
-      <button type="button" class="btn btn-primary btn-block" (click)="recoveryKeyToShow.set(null)">
-        I've Saved It
-      </button>
-    </div>
   </sf-modal>
 }
