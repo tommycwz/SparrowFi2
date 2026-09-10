@@ -49,6 +49,46 @@
     }
   </section>
 
+  <section>
+    <div class="section-head">
+      <h2>Cash Flow</h2>
+      <span class="muted period-tag">Last {{ cashFlowTrend().months.length }} Months</span>
+    </div>
+
+    @if (!hasCashFlowActivity()) {
+      <div class="empty-state card">
+        <sf-icon name="bar-chart" [size]="28" />
+        <p>No income or expenses in the last {{ cashFlowTrend().months.length }} months yet.</p>
+      </div>
+    } @else {
+      <div class="card cash-flow-card">
+        <div class="cash-flow-legend">
+          <span class="legend-item"><span class="legend-dot income"></span>Income</span>
+          <span class="legend-item"><span class="legend-dot expense"></span>Expense</span>
+        </div>
+        <div class="cash-flow-chart">
+          @for (m of cashFlowTrend().months; track m.key) {
+            <div class="cash-flow-col">
+              <div class="cash-flow-bars">
+                <div
+                  class="cash-flow-bar income"
+                  [style.height.%]="barHeightPercent(m.income, cashFlowTrend().max)"
+                  [attr.title]="'Income: ' + money(m.income)"
+                ></div>
+                <div
+                  class="cash-flow-bar expense"
+                  [style.height.%]="barHeightPercent(m.expense, cashFlowTrend().max)"
+                  [attr.title]="'Expense: ' + money(m.expense)"
+                ></div>
+              </div>
+              <span class="cash-flow-label muted">{{ m.label }}</span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
   <div class="dash-grid">
     <section>
       <div class="section-head">
@@ -62,19 +102,42 @@
           <p>No expenses recorded this month yet.</p>
         </div>
       } @else {
-        <div class="card breakdown-list">
-          @for (c of categoryBreakdown().items; track c.id) {
-            <div class="breakdown-row">
-              <div class="breakdown-top">
-                <span class="breakdown-dot" [style.background]="c.color"></span>
-                <span class="breakdown-name">{{ c.name }}</span>
-                <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
-              </div>
-              <div class="breakdown-bar-track">
-                <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
-              </div>
+        <div class="card breakdown-card">
+          <div class="donut-wrap">
+            <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Spending by category">
+              <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+              @for (seg of categoryDonutSegments(); track seg.id) {
+                <circle
+                  cx="21"
+                  cy="21"
+                  r="15.91549430919"
+                  fill="transparent"
+                  [attr.stroke]="seg.color"
+                  [attr.stroke-dasharray]="seg.dashArray"
+                  [attr.stroke-dashoffset]="seg.offset"
+                  class="donut-segment"
+                />
+              }
+            </svg>
+            <div class="donut-center">
+              <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(categoryBreakdown().total) }}</span>
+              <span class="donut-center-label muted">spent</span>
             </div>
-          }
+          </div>
+          <div class="breakdown-list">
+            @for (c of categoryBreakdown().items; track c.id) {
+              <div class="breakdown-row">
+                <div class="breakdown-top">
+                  <span class="breakdown-dot" [style.background]="c.color"></span>
+                  <span class="breakdown-name">{{ c.name }}</span>
+                  <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+                </div>
+                <div class="breakdown-bar-track">
+                  <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+                </div>
+              </div>
+            }
+          </div>
         </div>
       }
     </section>

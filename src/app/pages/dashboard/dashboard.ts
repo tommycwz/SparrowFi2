@@ -22,6 +22,28 @@ interface CategorySlice {
   percent: number;
 }
 
+/** A `CategorySlice` plus the two SVG `stroke-dasharray`/`stroke-dashoffset`
+ * values that draw its arc of the donut chart - see `categoryDonutSegments`. */
+interface DonutSegment extends CategorySlice {
+  dashArray: string;
+  offset: number;
+}
+
+interface MonthFlow {
+  key: string;
+  label: string;
+  income: number;
+  expense: number;
+}
+
+/** How many months of history the Cash Flow chart shows. */
+const CASH_FLOW_MONTHS = 6;
+/** Circumference of the donut's SVG circle when its radius is 15.9155 -
+ * chosen (the standard "no-library donut chart" trick) specifically so a
+ * percentage (0-100) can be used directly as a stroke-dasharray/dashoffset
+ * value instead of a real arc-length calculation. */
+const DONUT_CIRCUMFERENCE = 100;
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -112,6 +134,64 @@ export class DashboardPage {
     };
   });
 
+  /** `categoryBreakdown`'s slices, redrawn as donut-chart arcs. Each
+   * `<circle>` in the template is stroked with `stroke-dasharray="dash
+   * (100-dash)"` and `stroke-dashoffset="offset"` - offset starts at 25 (a
+   * quarter-turn, since the browser draws circles starting at 3 o'clock)
+   * and decreases by each prior slice's share, so consecutive slices chain
+   * around the ring clockwise from 12 o'clock with no gaps. */
+  readonly categoryDonutSegments = computed<DonutSegment[]>(() => {
+    let cumulative = 0;
+    return this.categoryBreakdown().items.map((slice) => {
+      const dash = slice.percent;
+      const offset = DONUT_CIRCUMFERENCE / 4 - cumulative;
+      cumulative += dash;
+      return {
+        ...slice,
+        dashArray: `${dash} ${DONUT_CIRCUMFERENCE - dash}`,
+        offset,
+      };
+    });
+  });
+
+  /** Income vs. expense for each of the last `CASH_FLOW_MONTHS` months
+   * (this one included), oldest first, plus the largest single bar value
+   * so the template can scale every bar to the same axis. Always returns
+   * exactly `CASH_FLOW_MONTHS` entries, even for months with no activity,
+   * so the chart's x-axis is stable rather than shrinking when recent
+   * months are quiet. */
+  readonly cashFlowTrend = computed<{ months: MonthFlow[]; max: number }>(() => {
+    const s = this.state.state();
+    const now = new Date();
+    const buckets = new Map<string, { income: number; expense: number }>();
+    const keys: string[] = [];
+    for (let i = CASH_FLOW_MONTHS - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = monthKeyOf(d);
+      keys.push(key);
+      buckets.set(key, { income: 0, expense: 0 });
+    }
+    for (const t of s?.transactions ?? []) {
+      const bucket = buckets.get(t.date.slice(0, 7));
+      if (!bucket) continue;
+      if (t.type === 'income') bucket.income += t.amount;
+      else if (t.type === 'expense') bucket.expense += t.amount;
+    }
+    const months = keys.map((key) => {
+      const b = buckets.get(key)!;
+      const label = new Date(`${key}-01T00:00:00`).toLocaleDateString(undefined, {
+        month: 'short',
+      });
+      return { key, label, income: b.income, expense: b.expense };
+    });
+    const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense]));
+    return { months, max };
+  });
+
+  readonly hasCashFlowActivity = computed(() =>
+    this.cashFlowTrend().months.some((m) => m.income > 0 || m.expense > 0),
+  );
+
   /** Active fixed deposits: total principal locked away, plus whichever
    * one matures soonest, so the dashboard surfaces "when do I get money
    * back" without a trip to the Fixed Deposits page. */
@@ -144,6 +224,13 @@ export class DashboardPage {
 
   money(amount: number): string {
     return formatMoney(amount, this.state.state()!.settings.currency);
+  }
+
+  /** A bar's height as a percentage of the chart's tallest bar (`max`), for
+   * the Cash Flow chart. Guards the `max === 0` case (no activity at all
+   * in any of the charted months) so bars come out at 0% instead of NaN%. */
+  barHeightPercent(value: number, max: number): number {
+    return max > 0 ? (value / max) * 100 : 0;
   }
 
   numberPart(amount: number): string {

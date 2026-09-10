@@ -24,6 +24,10 @@ export class AccountsPage {
   readonly editingId = signal<string | null>(null);
   readonly name = signal('');
   readonly color = signal(this.colors[0]);
+  /** Only asked for when creating a bank/wallet - see `save()` and
+   * `StateService.addBank`/`addWallet` for why this can't be edited
+   * afterwards. */
+  readonly initialCapital = signal(0);
 
   constructor(readonly state: StateService) {}
 
@@ -39,6 +43,7 @@ export class AccountsPage {
     this.editingId.set(null);
     this.name.set('');
     this.color.set(this.colors[Math.floor(Math.random() * this.colors.length)]);
+    this.initialCapital.set(0);
     this.showModal.set(true);
   }
 
@@ -59,19 +64,39 @@ export class AccountsPage {
       else if (tab === 'wallet') this.state.updateWallet(id, { name, color: this.color() });
       else this.state.updateCard(id, { name, color: this.color() });
     } else {
-      if (tab === 'bank') this.state.addBank({ name, color: this.color(), initialCapital: 0 });
+      if (tab === 'bank')
+        this.state.addBank({
+          name,
+          color: this.color(),
+          initialCapital: this.initialCapital() || 0,
+        });
       else if (tab === 'wallet')
-        this.state.addWallet({ name, color: this.color(), initialCapital: 0 });
+        this.state.addWallet({
+          name,
+          color: this.color(),
+          initialCapital: this.initialCapital() || 0,
+        });
       else this.state.addCard({ name, color: this.color() });
     }
     this.showModal.set(false);
   }
 
   remove(id: string): void {
-    if (!confirm('Delete this account? Its transactions will also be removed.')) return;
     const tab = this.tab();
-    if (tab === 'bank') this.state.removeBank(id);
-    else if (tab === 'wallet') this.state.removeWallet(id);
-    else this.state.removeCard(id);
+    if (this.state.accountHasTransactions(tab, id)) {
+      alert(
+        `This ${tab} has transactions linked to it and can’t be deleted. Delete or reassign ` +
+          'those transactions first.',
+      );
+      return;
+    }
+    if (!confirm('Delete this account?')) return;
+    try {
+      if (tab === 'bank') this.state.removeBank(id);
+      else if (tab === 'wallet') this.state.removeWallet(id);
+      else this.state.removeCard(id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not delete this account.');
+    }
   }
 }

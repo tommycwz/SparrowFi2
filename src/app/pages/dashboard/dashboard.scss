@@ -158,11 +158,142 @@
   }
 }
 
+.breakdown-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.donut-wrap {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.donut-track {
+  stroke: var(--surface-2);
+  stroke-width: 3.8;
+}
+
+.donut-segment {
+  stroke-width: 3.8;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donut-center-value {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.donut-center-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .breakdown-list {
+  flex: 1;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  padding: 1rem;
+}
+
+/* ----- Cash flow (income vs. expense, last few months) -------------------- */
+
+.cash-flow-legend {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.78rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.legend-dot.income {
+  background: var(--success);
+}
+
+.legend-dot.expense {
+  background: var(--danger);
+}
+
+.cash-flow-chart {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.4rem;
+  height: 160px;
+}
+
+.cash-flow-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.cash-flow-bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+}
+
+.cash-flow-bar {
+  width: 40%;
+  max-width: 16px;
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+
+.cash-flow-bar.income {
+  background: var(--success);
+}
+
+.cash-flow-bar.expense {
+  background: var(--danger);
+}
+
+.cash-flow-label {
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .breakdown-row {

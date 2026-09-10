@@ -70,6 +70,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         @case ('card') {
           <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" />
         }
+        @case ('bar-chart') {
+          <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        }
         @case ('tag') {
           <path
             d="M12.6 2.6a2 2 0 0 1 1.4-.6H20a2 2 0 0 1 2 2v6a2 2 0 0 1-.6 1.4l-9 9a2 2 0 0 1-2.8 0l-6-6a2 2 0 0 1 0-2.8Z"

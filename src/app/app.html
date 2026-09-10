@@ -1,3 +1,16 @@
+@if (updates.updateReady() && !updateBannerDismissed()) {
+  <div class="update-banner">
+    <sf-icon name="download" [size]="16" />
+    <span>A new version of SparrowFi is available.</span>
+    <button type="button" class="btn btn-primary btn-sm" [disabled]="refreshing()" (click)="refreshApp()">
+      {{ refreshing() ? 'Updating…' : 'Refresh' }}
+    </button>
+    <button type="button" class="icon-btn" (click)="dismissUpdateBanner()" aria-label="Dismiss">
+      <sf-icon name="x" [size]="16" />
+    </button>
+  </div>
+}
+
 @if (!state.isLoaded()) {
   <app-launcher />
 } @else {

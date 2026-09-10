@@ -194,46 +194,100 @@ export class StateService {
     this.updateState((s) => ({ ...s, settings: { ...s.settings, currency } }));
   }
 
+  /** Creates a bank. `bank.initialCapital`, if non-zero, is recorded as an
+   * "Initial balance" transaction rather than stored on the bank record
+   * itself - same pattern `migrateState` uses for a legacy file's
+   * initialCapital, so a bank's balance is always "opening transaction +
+   * everything since" with nothing to double-count. This also means there
+   * is no `initialCapital` field left to edit afterwards: `updateBank`
+   * only ever touches name/color, by design - a bank's opening balance is
+   * a one-time thing set at creation, not something you come back and
+   * change later (adjust it with a regular transaction instead). */
   addBank(bank: Omit<Bank, 'id'>): void {
+    const id = generateId();
+    const capital = bank.initialCapital || 0;
     this.updateState((s) => ({
       ...s,
-      banks: [...s.banks, { ...bank, id: generateId(), initialCapital: 0 }],
+      banks: [...s.banks, { name: bank.name, color: bank.color, id, initialCapital: 0 }],
+      transactions:
+        capital !== 0
+          ? [
+              ...s.transactions,
+              {
+                id: generateId(),
+                date: new Date().toISOString().slice(0, 10),
+                amount: Math.abs(capital),
+                type: 'others-in',
+                accountType: 'bank',
+                accountId: id,
+                notes: 'Initial balance',
+              },
+            ]
+          : s.transactions,
     }));
   }
-  updateBank(id: string, patch: Partial<Bank>): void {
+  /** Name/color only - see `addBank` for why initial capital isn't here. */
+  updateBank(id: string, patch: Pick<Bank, 'name' | 'color'>): void {
     this.updateState((s) => ({
       ...s,
       banks: s.banks.map((b) => (b.id === id ? { ...b, ...patch, id } : b)),
     }));
   }
+  /** Refuses to delete a bank that any transaction still references
+   * (including ones this service generated itself, like a fixed deposit's
+   * opening/maturity entries or the bank's own opening balance) - deleting
+   * the account out from under its history used to silently cascade-delete
+   * that history along with it, which is exactly the kind of data loss a
+   * misclick shouldn't cause. Throws instead so `AccountsPage` can show
+   * why; check `accountHasTransactions` first to avoid the throw entirely. */
   removeBank(id: string): void {
-    this.updateState((s) => ({
-      ...s,
-      banks: s.banks.filter((b) => b.id !== id),
-      transactions: s.transactions.filter((t) => !(t.accountType === 'bank' && t.accountId === id)),
-    }));
+    if (this.accountHasTransactions('bank', id)) {
+      throw new Error(
+        'This bank has transactions linked to it and can’t be deleted. Delete or reassign those transactions first.',
+      );
+    }
+    this.updateState((s) => ({ ...s, banks: s.banks.filter((b) => b.id !== id) }));
   }
 
+  /** Same opening-balance-as-transaction pattern as `addBank`. */
   addWallet(wallet: Omit<Wallet, 'id'>): void {
+    const id = generateId();
+    const capital = wallet.initialCapital || 0;
     this.updateState((s) => ({
       ...s,
-      wallets: [...s.wallets, { ...wallet, id: generateId(), initialCapital: 0 }],
+      wallets: [...s.wallets, { name: wallet.name, color: wallet.color, id, initialCapital: 0 }],
+      transactions:
+        capital !== 0
+          ? [
+              ...s.transactions,
+              {
+                id: generateId(),
+                date: new Date().toISOString().slice(0, 10),
+                amount: Math.abs(capital),
+                type: 'others-in',
+                accountType: 'wallet',
+                accountId: id,
+                notes: 'Initial balance',
+              },
+            ]
+          : s.transactions,
     }));
   }
-  updateWallet(id: string, patch: Partial<Wallet>): void {
+  /** Name/color only - see `addBank` for why initial capital isn't here. */
+  updateWallet(id: string, patch: Pick<Wallet, 'name' | 'color'>): void {
     this.updateState((s) => ({
       ...s,
       wallets: s.wallets.map((w) => (w.id === id ? { ...w, ...patch, id } : w)),
     }));
   }
+  /** Same "refuse rather than cascade" rule as `removeBank`. */
   removeWallet(id: string): void {
-    this.updateState((s) => ({
-      ...s,
-      wallets: s.wallets.filter((w) => w.id !== id),
-      transactions: s.transactions.filter(
-        (t) => !(t.accountType === 'wallet' && t.accountId === id),
-      ),
-    }));
+    if (this.accountHasTransactions('wallet', id)) {
+      throw new Error(
+        'This wallet has transactions linked to it and can’t be deleted. Delete or reassign those transactions first.',
+      );
+    }
+    this.updateState((s) => ({ ...s, wallets: s.wallets.filter((w) => w.id !== id) }));
   }
 
   addCard(card: Omit<Card, 'id'>): void {
@@ -245,12 +299,26 @@ export class StateService {
       cards: s.cards.map((c) => (c.id === id ? { ...c, ...patch, id } : c)),
     }));
   }
+  /** Same "refuse rather than cascade" rule as `removeBank`. */
   removeCard(id: string): void {
-    this.updateState((s) => ({
-      ...s,
-      cards: s.cards.filter((c) => c.id !== id),
-      transactions: s.transactions.filter((t) => !(t.accountType === 'card' && t.accountId === id)),
-    }));
+    if (this.accountHasTransactions('card', id)) {
+      throw new Error(
+        'This card has transactions linked to it and can’t be deleted. Delete or reassign those transactions first.',
+      );
+    }
+    this.updateState((s) => ({ ...s, cards: s.cards.filter((c) => c.id !== id) }));
+  }
+
+  /** Whether any transaction currently references this bank/wallet/card -
+   * including transactions StateService generated itself (a fixed
+   * deposit's opening/maturity entries, or an account's own opening
+   * balance). Used by the three `remove*` methods above to refuse
+   * deletion, and by `AccountsPage` to explain why before even asking for
+   * delete confirmation. */
+  accountHasTransactions(accountType: 'bank' | 'wallet' | 'card', accountId: string): boolean {
+    return (this._state()?.transactions ?? []).some(
+      (t) => t.accountType === accountType && t.accountId === accountId,
+    );
   }
 
   addCategory(category: Omit<Category, 'id'>): void {

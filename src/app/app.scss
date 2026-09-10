@@ -248,6 +248,51 @@
   color: #fff;
 }
 
+/* ----- "New version available" banner (see UpdateService) --------------- */
+
+.update-banner {
+  position: sticky;
+  top: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.update-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-banner .btn-primary {
+  background: var(--accent-contrast);
+  color: var(--accent);
+}
+
+.update-banner .btn-primary:hover:not(:disabled) {
+  filter: none;
+  opacity: 0.88;
+}
+
+.update-banner .icon-btn {
+  color: var(--accent-contrast);
+  flex-shrink: 0;
+}
+
+.update-banner .icon-btn:hover {
+  background: rgb(255 255 255 / 20%);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
 @media (min-width: 900px) {
   .sidebar {
     display: flex;

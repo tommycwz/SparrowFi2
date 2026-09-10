@@ -1,12 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter([])],
+      // `enabled: false` - App injects UpdateService, which injects
+      // SwUpdate, which needs this provider to exist in the DI tree even
+      // though there's no real service worker in the jsdom test
+      // environment to register.
+      providers: [provideRouter([]), provideServiceWorker('ngsw-worker.js', { enabled: false })],
     }).compileComponents();
   });
 

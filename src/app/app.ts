@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, HostListener, signal } from '@angul
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { StateService } from './core/state.service';
 import { CloudAuthService } from './core/cloud-auth.service';
+import { UpdateService } from './core/update.service';
 import { IconComponent } from './shared/icon';
 import { LauncherPage } from './pages/launcher/launcher';
 
@@ -32,12 +33,19 @@ export class App {
   readonly navItems = NAV_ITEMS;
   readonly mobileNavOpen = signal(false);
   readonly toast = signal<{ text: string; tone: 'success' | 'info' | 'danger' } | null>(null);
+  /** Locally hides the "new version available" banner after the user
+   * dismisses it without refreshing - `updates.updateReady` itself stays
+   * true (the download is still there waiting), so reopening the app
+   * later still offers it. */
+  readonly updateBannerDismissed = signal(false);
+  readonly refreshing = signal(false);
 
   private toastTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     readonly state: StateService,
     readonly cloudAuth: CloudAuthService,
+    readonly updates: UpdateService,
   ) {}
 
   @HostListener('window:beforeunload', ['$event'])
@@ -77,6 +85,27 @@ export class App {
     } catch (err) {
       this.showToast(err instanceof Error ? err.message : 'Could not save.', 'danger');
     }
+  }
+
+  /** Switches to the already-downloaded new version and reloads. Guarded
+   * the same way `signOut()` is - reloading discards unsaved changes,
+   * since this app has no autosave. */
+  async refreshApp(): Promise<void> {
+    if (this.state.dirty()) {
+      const ok = confirm('You have unsaved changes. Refresh to update anyway?');
+      if (!ok) return;
+    }
+    this.refreshing.set(true);
+    try {
+      await this.updates.activate();
+    } catch {
+      this.refreshing.set(false);
+      this.showToast('Could not update - try refreshing the page manually.', 'danger');
+    }
+  }
+
+  dismissUpdateBanner(): void {
+    this.updateBannerDismissed.set(true);
   }
 
   signOut(): void {

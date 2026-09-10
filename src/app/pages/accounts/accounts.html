@@ -29,7 +29,9 @@
         <div class="card row" (click)="openEdit(item)">
           <div class="dot" [style.background]="item.color"></div>
           <div class="name">{{ item.name }}</div>
-          <div class="balance" [class.negative]="item.balance < 0">{{ money(item.balance) }}</div>
+          @if (tab() !== 'card') {
+            <div class="balance" [class.negative]="item.balance < 0">{{ money(item.balance) }}</div>
+          }
           <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(item.id)" aria-label="Delete">
             <sf-icon name="trash" [size]="16" />
           </button>
@@ -50,6 +52,23 @@
         Color
         <sf-color-picker [(value)]="color" />
       </label>
+      @if (!editingId() && tab() !== 'card') {
+        <label>
+          Initial Capital
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            [ngModel]="initialCapital()"
+            (ngModelChange)="initialCapital.set($event)"
+            (keydown.enter)="save()"
+          />
+        </label>
+        <p class="muted capital-hint">
+          Recorded as an opening transaction. This can't be changed once the {{ tab() }} is
+          created - add a regular transaction later to adjust the balance.
+        </p>
+      }
     </div>
     <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
   </sf-modal>
