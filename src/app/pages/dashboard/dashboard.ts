@@ -89,6 +89,19 @@ export class DashboardPage {
     return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))} this month`;
   });
 
+  /** "Net This Month" stat value - sign-then-symbol-then-magnitude, same
+   * pattern as `netWorthDeltaLabel` (and the fix in `formatMoney`): the
+   * symbol always comes before the digits, and any minus sign always comes
+   * before the symbol, rather than a `currencySymbol() + numberPart(net)`
+   * concatenation that (for a negative `net`) would sandwich the minus
+   * sign that `formatAmountNumber` itself produces between the two,
+   * e.g. "RM-500.00" instead of "-RM500.00". */
+  readonly netStatLabel = computed(() => {
+    const net = this.monthlyStats().net;
+    const sign = net < 0 ? '-' : '';
+    return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
+  });
+
   /** This month's expenses grouped by category, sorted largest first, with
    * anything past the top few folded into a single "Other" slice - the
    * classic "where did my money go" dashboard widget. */
@@ -261,5 +274,17 @@ export class DashboardPage {
     if (t.accountType === 'others') return 'Others';
     const list = t.accountType === 'bank' ? s.banks : t.accountType === 'wallet' ? s.wallets : s.cards;
     return list.find((a) => a.id === t.accountId)?.name ?? '—';
+  }
+
+  /** The specific bank/wallet/card's own color (set in Accounts), so the
+   * account name next to a transaction gets a dot just like the category
+   * name does - Cash/Others fall back to a neutral gray since they have no
+   * color of their own in the data model. */
+  accountColor(t: Transaction): string {
+    const s = this.state.state();
+    if (!s) return CATEGORY_COLOR_FALLBACK;
+    if (t.accountType === 'cash' || t.accountType === 'others') return CATEGORY_COLOR_FALLBACK;
+    const list = t.accountType === 'bank' ? s.banks : t.accountType === 'wallet' ? s.wallets : s.cards;
+    return list.find((a) => a.id === t.accountId)?.color ?? CATEGORY_COLOR_FALLBACK;
   }
 }

@@ -26,6 +26,28 @@ describe('DashboardPage charts', () => {
     page = fixture.componentInstance;
   });
 
+  describe('netStatLabel', () => {
+    it('puts the minus sign before the currency symbol for a negative net (not sandwiched after it)', () => {
+      state.addTransaction({ date: TODAY, amount: 200, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 500, type: 'expense', accountType: 'cash' });
+
+      expect(page.monthlyStats().net).toBe(-300);
+      const label = page.netStatLabel();
+      expect(label.startsWith('-')).toBe(true);
+      expect(label.lastIndexOf('-')).toBe(0);
+      expect(label).toContain('300.00');
+    });
+
+    it('has no minus sign for a positive or zero net', () => {
+      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
+      expect(page.netStatLabel()).not.toContain('-');
+
+      state.replaceState(createEmptyState());
+      expect(page.netStatLabel()).not.toContain('-');
+    });
+  });
+
   describe('categoryDonutSegments', () => {
     it('turns this month’s category breakdown into stacked donut arcs summing to a full ring', () => {
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
@@ -147,11 +169,38 @@ describe('DashboardPage charts', () => {
       expect(expenseBar.style.height).toBe('50%');
     });
 
+    it('colors the Net This Month stat green when positive and red when negative', () => {
+      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 900, type: 'expense', accountType: 'cash' });
+      fixture.detectChanges();
+
+      const stats = fixture.nativeElement.querySelectorAll('.stat .stat-value');
+      const netEl = stats[2] as HTMLElement; // Monthly Income, Monthly Expense, Net This Month
+      expect(netEl.classList.contains('negative')).toBe(true);
+      expect(netEl.classList.contains('positive')).toBe(false);
+
+      state.addTransaction({ date: TODAY, amount: 1000, type: 'income', accountType: 'cash' });
+      fixture.detectChanges();
+      expect(netEl.classList.contains('positive')).toBe(true);
+      expect(netEl.classList.contains('negative')).toBe(false);
+    });
+
     it('shows the empty state instead of a chart when there is no cash flow activity', () => {
       fixture.detectChanges();
       const el = fixture.nativeElement as HTMLElement;
       expect(el.querySelector('.cash-flow-chart')).toBeNull();
       expect(el.textContent).toContain('No income or expenses');
+    });
+
+    it("shows the specific bank's own color next to its name in Recent Transactions", () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 1000 });
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('.tx-row') as HTMLElement;
+      const dots = row.querySelectorAll('.tx-dot');
+      // First dot is the category's, second is the account's.
+      expect((dots[1] as HTMLElement).style.background).toBe('rgb(37, 99, 235)');
+      expect(row.querySelector('.tx-account')?.textContent).toContain('Maybank');
     });
   });
 });

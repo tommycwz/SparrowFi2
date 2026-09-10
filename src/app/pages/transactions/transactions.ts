@@ -6,6 +6,7 @@ import { AccountType, CURRENCIES, Transaction, TransactionType } from '../../cor
 import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
+import { ColorSelectComponent } from '../../shared/color-select';
 
 interface TxForm {
   date: string;
@@ -47,6 +48,21 @@ const TYPE_LABELS: Record<TransactionType, string> = {
   expense: 'Expense',
   'others-in': 'Others (In)',
   'others-out': 'Others (Out)',
+};
+
+/** One distinct accent color per transaction type - reusing the app's
+ * existing design tokens rather than inventing new ones - so the four
+ * options in the Type picker are told apart at a glance instead of all
+ * looking the same until read. Income/expense keep the green/red
+ * convention used everywhere else in the app (positive/negative amounts);
+ * the two "Others" variants get their own accent/warning hues rather than
+ * reusing green/red, since collapsing them onto the same colors as
+ * Income/Expense would defeat the point of telling all four apart. */
+const TYPE_COLORS: Record<TransactionType, string> = {
+  income: 'var(--success)',
+  expense: 'var(--danger)',
+  'others-in': 'var(--accent)',
+  'others-out': 'var(--warning)',
 };
 
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -127,7 +143,7 @@ interface ImportPreview {
 @Component({
   selector: 'app-transactions',
   standalone: true,
-  imports: [FormsModule, IconComponent, ModalComponent],
+  imports: [FormsModule, IconComponent, ModalComponent, ColorSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transactions.html',
   styleUrl: './transactions.scss',
@@ -163,7 +179,7 @@ export class TransactionsPage {
 
   readonly accountOptions = computed(() => {
     const s = this.state.state();
-    if (!s) return [] as { id: string; name: string }[];
+    if (!s) return [] as { id: string; name: string; color?: string }[];
     switch (this.form().accountType) {
       case 'bank':
         return s.banks;
@@ -231,6 +247,17 @@ export class TransactionsPage {
 
   readonly statsPeriodLabel = computed(() => (this.selectedMonth() === 'all' ? 'All-Time' : 'Monthly'));
 
+  /** "Net Balance" stat value - sign-then-symbol-then-magnitude, so a
+   * negative net renders "-{{symbol}}500.00" rather than
+   * "{{symbol}}-500.00" (the minus sign `formatAmountNumber` itself
+   * produces sandwiched after the symbol instead of before it - the same
+   * defect class `formatMoney` was fixed for). */
+  readonly netStatLabel = computed(() => {
+    const net = this.monthlyStats().net;
+    const sign = net < 0 ? '-' : '';
+    return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
+  });
+
   readonly currencySymbol = computed(() => {
     const currency = this.state.state()?.settings.currency;
     return CURRENCIES.find((c) => c.value === currency)?.symbol ?? '';
@@ -264,6 +291,10 @@ export class TransactionsPage {
     return this.state.state()?.categories.find((c) => c.id === id)?.color ?? '#94A3B8';
   }
 
+  typeColor(type: TransactionType): string {
+    return TYPE_COLORS[type];
+  }
+
   accountLabel(t: Transaction): string {
     const s = this.state.state();
     if (!s) return '';
@@ -271,6 +302,18 @@ export class TransactionsPage {
     if (t.accountType === 'others') return 'Others';
     const list = t.accountType === 'bank' ? s.banks : t.accountType === 'wallet' ? s.wallets : s.cards;
     return list.find((a) => a.id === t.accountId)?.name ?? '—';
+  }
+
+  /** The specific bank/wallet/card's own color (set in Accounts), so the
+   * account name next to a transaction gets a dot just like the category
+   * name does - Cash/Others fall back to a neutral gray since they have no
+   * color of their own in the data model. */
+  accountColor(t: Transaction): string {
+    const s = this.state.state();
+    if (!s) return '#94A3B8';
+    if (t.accountType === 'cash' || t.accountType === 'others') return '#94A3B8';
+    const list = t.accountType === 'bank' ? s.banks : t.accountType === 'wallet' ? s.wallets : s.cards;
+    return list.find((a) => a.id === t.accountId)?.color ?? '#94A3B8';
   }
 
   /** Human label for the month nav bar, e.g. "September 2026" or "All Transactions". */

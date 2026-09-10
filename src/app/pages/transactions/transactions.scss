@@ -262,6 +262,17 @@
   font-weight: 600;
 }
 
+/* Groups a dot with the name it belongs to (category, account) so the two
+   never get separated onto different lines when `.tx-top-line` wraps -
+   without this, `flex-wrap` can leave an orphaned dot at the end of one
+   line and its label alone at the start of the next. */
+.tx-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .tx-cat,
 .tx-account {
   overflow: hidden;
@@ -342,6 +353,38 @@
 }
 
 /* ----- Add/Edit modal --------------------------------------------------- */
+
+.type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.type-tab {
+  flex: 1;
+  min-width: 90px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.type-tab:hover:not(.active) {
+  border-color: var(--tab-color);
+  color: var(--text);
+}
+
+.type-tab.active {
+  background: var(--tab-color);
+  border-color: var(--tab-color);
+  color: #fff;
+}
 
 .checkbox-row {
   flex-direction: row;

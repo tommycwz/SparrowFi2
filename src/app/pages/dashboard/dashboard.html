@@ -18,7 +18,13 @@
     </div>
     <div class="stat">
       <div class="stat-label muted">Net This Month</div>
-      <div class="stat-value">{{ currencySymbol() }}{{ numberPart(monthlyStats().net) }}</div>
+      <div
+        class="stat-value"
+        [class.positive]="monthlyStats().net >= 0"
+        [class.negative]="monthlyStats().net < 0"
+      >
+        {{ netStatLabel() }}
+      </div>
     </div>
   </div>
 
@@ -193,11 +199,16 @@
             </div>
             <div class="tx-mid">
               <div class="tx-top-line">
-                <span class="tx-dot" [style.background]="categoryColor(t.categoryId)"></span>
-                <span class="tx-cat">{{ categoryName(t.categoryId) }}</span>
+                <span class="tx-tag">
+                  <span class="tx-dot" [style.background]="categoryColor(t.categoryId)"></span>
+                  <span class="tx-cat">{{ categoryName(t.categoryId) }}</span>
+                </span>
                 @if (accountLabel(t) !== '—') {
                   <span class="tx-sep">·</span>
-                  <span class="tx-account">{{ accountLabel(t) }}</span>
+                  <span class="tx-tag">
+                    <span class="tx-dot" [style.background]="accountColor(t)"></span>
+                    <span class="tx-account">{{ accountLabel(t) }}</span>
+                  </span>
                 }
                 @if (timeBadge(t.time); as tb) {
                   <span class="tx-time-badge">{{ tb }}</span>

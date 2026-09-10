@@ -432,6 +432,17 @@
   font-weight: 600;
 }
 
+/* Groups a dot with the name it belongs to (category, account) so the two
+   never get separated onto different lines when `.tx-top-line` wraps -
+   without this, `flex-wrap` can leave an orphaned dot at the end of one
+   line and its label alone at the start of the next. */
+.tx-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .tx-cat,
 .tx-account {
   overflow: hidden;

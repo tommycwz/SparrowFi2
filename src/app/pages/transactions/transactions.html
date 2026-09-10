@@ -32,7 +32,13 @@
     </div>
     <div class="stat">
       <div class="stat-label muted">Net Balance</div>
-      <div class="stat-value">{{ currencySymbol() }}{{ numberPart(monthlyStats().net) }}</div>
+      <div
+        class="stat-value"
+        [class.positive]="monthlyStats().net >= 0"
+        [class.negative]="monthlyStats().net < 0"
+      >
+        {{ netStatLabel() }}
+      </div>
     </div>
   </div>
 
@@ -123,11 +129,16 @@
 
             <div class="tx-mid">
               <div class="tx-top-line">
-                <span class="tx-dot" [style.background]="categoryColor(t.categoryId)"></span>
-                <span class="tx-cat">{{ categoryName(t.categoryId) }}</span>
+                <span class="tx-tag">
+                  <span class="tx-dot" [style.background]="categoryColor(t.categoryId)"></span>
+                  <span class="tx-cat">{{ categoryName(t.categoryId) }}</span>
+                </span>
                 @if (accountLabel(t) !== '—') {
                   <span class="tx-sep">·</span>
-                  <span class="tx-account">{{ accountLabel(t) }}</span>
+                  <span class="tx-tag">
+                    <span class="tx-dot" [style.background]="accountColor(t)"></span>
+                    <span class="tx-account">{{ accountLabel(t) }}</span>
+                  </span>
                 }
                 @if (timeBadge(t.time); as tb) {
                   <span class="tx-time-badge">{{ tb }}</span>
@@ -168,12 +179,19 @@
     <div class="field-row">
       <label>
         Type
-        <select [ngModel]="form().type" (ngModelChange)="onTypeChange($event)">
-          <option value="income">Income</option>
-          <option value="expense">Expense</option>
-          <option value="others-in">Others (In)</option>
-          <option value="others-out">Others (Out)</option>
-        </select>
+        <div class="type-tabs" role="group" aria-label="Transaction type">
+          @for (t of typeOptions; track t) {
+            <button
+              type="button"
+              class="type-tab"
+              [class.active]="form().type === t"
+              [style.--tab-color]="typeColor(t)"
+              (click)="onTypeChange(t)"
+            >
+              {{ typeLabels[t] }}
+            </button>
+          }
+        </div>
       </label>
 
       <label>
@@ -230,29 +248,25 @@
       @if (accountOptions().length > 0) {
         <label>
           Which {{ form().accountType }}
-          <select
-            [ngModel]="form().accountId"
-            (ngModelChange)="form.update((f) => ({ ...f, accountId: $event }))"
-          >
-            <option value="">Select…</option>
-            @for (a of accountOptions(); track a.id) {
-              <option [value]="a.id">{{ a.name }}</option>
-            }
-          </select>
+          <sf-color-select
+            [options]="accountOptions()"
+            [value]="form().accountId"
+            (valueChange)="form.update((f) => ({ ...f, accountId: $event }))"
+            placeholder="Select…"
+          />
         </label>
       }
 
       <label>
         Category
-        <select
-          [ngModel]="form().categoryId"
-          (ngModelChange)="form.update((f) => ({ ...f, categoryId: $event }))"
-        >
-          <option value="">Uncategorized</option>
-          @for (c of categoriesForType(); track c.id) {
-            <option [value]="c.id">{{ c.name }}</option>
-          }
-        </select>
+        <sf-color-select
+          [options]="categoriesForType()"
+          [value]="form().categoryId"
+          (valueChange)="form.update((f) => ({ ...f, categoryId: $event }))"
+          [allowEmpty]="true"
+          emptyLabel="Uncategorized"
+          placeholder="Uncategorized"
+        />
       </label>
 
       <label>
