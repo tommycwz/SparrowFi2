@@ -1,1 +1,0 @@
-function n(t){let e=new Date(t.startDate);return e.setMonth(e.getMonth()+t.months),e.toISOString().slice(0,10)}function o(t){return t.amount*(1+t.percentage/100*(t.months/12))}export{o as n,n as t};
