@@ -10,6 +10,8 @@ import {
   WrongCredentialError,
 } from '../../core/spw-format.service';
 import { FileHandlerService, UserCancelledError } from '../../core/file-handler.service';
+import { BUILD_INFO } from '../../core/build-info';
+import { formatRelativeTime } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 
@@ -42,6 +44,19 @@ export class SettingsPage {
   // ----- Reset Account Data ------------------------------------------------
   readonly resetError = signal<string | null>(null);
   readonly resetSuccess = signal<string | null>(null);
+
+  // ----- About --------------------------------------------------------------
+  /** Regenerated on every `npm run build` (see `scripts/gen-build-info.js`)
+   * - the whole point is answering "am I actually on the latest version"
+   * without needing to remember to bump anything by hand. Computed once at
+   * component construction rather than as a live-ticking clock: the
+   * relative label is only meant to be glanced at, not second-accurate. */
+  readonly buildVersion = BUILD_INFO.version;
+  readonly buildTime = new Date(BUILD_INFO.builtAt).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  readonly buildAgo = formatRelativeTime(BUILD_INFO.builtAt);
 
   constructor(
     readonly state: StateService,

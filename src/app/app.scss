@@ -145,6 +145,13 @@
   margin-top: auto;
 }
 
+.build-tag {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 /* Mobile off-canvas nav (see app.html for why this replaces a bottom bar):
    backdrop is a purely visual dim layer (pointer-events: none - closing on
    outside-click is handled in App.onDocumentClick instead), and the drawer

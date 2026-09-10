@@ -105,6 +105,23 @@
     </p>
   </section>
 
+  <section class="card stack">
+    <div class="section-title">
+      <sf-icon name="info" [size]="18" />
+      <h2>About</h2>
+    </div>
+    <div class="kv">
+      <span class="muted">Version</span><span>{{ buildVersion }}</span>
+    </div>
+    <div class="kv">
+      <span class="muted">Built</span><span>{{ buildTime }} ({{ buildAgo }})</span>
+    </div>
+    <p class="muted">
+      If this looks older than you expect right after a new release, refresh the page - or use
+      the "Refresh" button on the update banner if one is showing.
+    </p>
+  </section>
+
   <section class="card stack danger-zone">
     <div class="section-title">
       <sf-icon name="alert-triangle" [size]="18" />

@@ -3,6 +3,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { StateService } from './core/state.service';
 import { CloudAuthService } from './core/cloud-auth.service';
 import { UpdateService } from './core/update.service';
+import { BUILD_INFO } from './core/build-info';
 import { IconComponent } from './shared/icon';
 import { LauncherPage } from './pages/launcher/launcher';
 
@@ -31,6 +32,11 @@ const NAV_ITEMS: NavItem[] = [
 })
 export class App {
   readonly navItems = NAV_ITEMS;
+  /** Shown small/muted in the sidebar footer so "am I on the latest build"
+   * is answerable at a glance - see Settings' About section for the full
+   * build time, and `BUILD_INFO`/`scripts/gen-build-info.js` for how this
+   * is generated. */
+  readonly buildVersion = BUILD_INFO.version;
   readonly mobileNavOpen = signal(false);
   readonly toast = signal<{ text: string; tone: 'success' | 'info' | 'danger' } | null>(null);
   /** Locally hides the "new version available" banner after the user
