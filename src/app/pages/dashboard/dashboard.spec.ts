@@ -136,7 +136,13 @@ describe('DashboardPage', () => {
 
   describe('cashSparkline', () => {
     it('reflects a positive net change over the window and ends with a plottable point', () => {
-      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 1000 });
+      // A nonzero `initialCapital` books its own "Initial balance" `others-in`
+      // transaction dated today (see `StateService.addBank`) - that would
+      // land inside this 30-day window right alongside whatever the test
+      // adds and swamp the signal being tested, so the bank starts at 0 here
+      // and the explicit transaction below is the only thing moving the
+      // window's balance.
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 0 });
       const bankId = state.state()!.banks[0].id;
       state.addTransaction({ date: TODAY, amount: 200, type: 'income', accountType: 'bank', accountId: bankId });
 
@@ -148,7 +154,10 @@ describe('DashboardPage', () => {
     });
 
     it('flags a negative delta when liquid cash fell over the window', () => {
-      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 1000 });
+      // See the comment above - `initialCapital: 0` keeps the opening
+      // balance from creating its own same-day transaction inside the
+      // window.
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 0 });
       const bankId = state.state()!.banks[0].id;
       state.addTransaction({ date: TODAY, amount: 300, type: 'expense', accountType: 'bank', accountId: bankId });
 

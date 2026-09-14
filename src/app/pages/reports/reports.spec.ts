@@ -678,7 +678,13 @@ describe('ReportsPage', () => {
 
     it('renders the current account balances regardless of the selected report period', () => {
       state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 500 });
-      page.month.set('2020-01'); // a period with no transactions at all
+      // The whole report body (including the account grid) is hidden behind
+      // the top-level empty state whenever the *selected period* has zero
+      // transactions, so an unrelated cash transaction keeps the period
+      // non-empty - the point being tested is that Maybank's balance isn't
+      // scoped to the period filter, not that the report renders with none.
+      state.addTransaction({ date: TODAY, amount: 50, type: 'income', accountType: 'cash' });
+      page.month.set(THIS_MONTH);
       fixture.detectChanges();
 
       const el = fixture.nativeElement as HTMLElement;
@@ -686,6 +692,9 @@ describe('ReportsPage', () => {
     });
 
     it('shows the Investments empty state when there are none, and a bar per investment once added', () => {
+      // See the comment above - at least one transaction in the selected
+      // period is needed for the report body to render at all.
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
       page.month.set(THIS_MONTH);
       fixture.detectChanges();
       let el = fixture.nativeElement as HTMLElement;
