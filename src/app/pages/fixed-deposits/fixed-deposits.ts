@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
 import { FixedDeposit } from '../../core/models';
-import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
+import { fdGainValue, fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 
@@ -14,6 +14,7 @@ interface FdForm {
   amount: string;
   percentage: string;
   months: string;
+  remarks: string;
 }
 
 function blankForm(defaultBankId: string): FdForm {
@@ -24,6 +25,7 @@ function blankForm(defaultBankId: string): FdForm {
     amount: '',
     percentage: '',
     months: '12',
+    remarks: '',
   };
 }
 
@@ -53,7 +55,8 @@ export class FixedDepositsPage {
     return formatMoney(amount, this.state.state()!.settings.currency);
   }
 
-  bankName(id: string): string {
+  bankName(id: string | undefined): string {
+    if (!id) return 'None (memo only)';
     return this.banks().find((b) => b.id === id)?.name ?? '—';
   }
 
@@ -65,6 +68,13 @@ export class FixedDepositsPage {
     return fdMaturityValue(fd);
   }
 
+  /** Interest/gains portion only, on top of the principal - shown
+   * separately in the card since maturity now books it as its own Income
+   * transaction rather than lumping it into the payout. */
+  gainValue(fd: FixedDeposit): number {
+    return fdGainValue(fd);
+  }
+
   openAdd(): void {
     this.editingId.set(null);
     this.form.set(blankForm(this.banks()[0]?.id ?? ''));
@@ -74,12 +84,13 @@ export class FixedDepositsPage {
   openEdit(fd: FixedDeposit): void {
     this.editingId.set(fd.id);
     this.form.set({
-      bankId: fd.bankId,
+      bankId: fd.bankId ?? '',
       toBankId: fd.toBankId ?? '',
       startDate: fd.startDate,
       amount: String(fd.amount),
       percentage: String(fd.percentage),
       months: String(fd.months),
+      remarks: fd.remarks ?? '',
     });
     this.showModal.set(true);
   }
@@ -89,14 +100,15 @@ export class FixedDepositsPage {
     const amount = parseFloat(f.amount);
     const percentage = parseFloat(f.percentage);
     const months = parseInt(f.months, 10);
-    if (!f.bankId || isNaN(amount) || amount <= 0 || isNaN(percentage) || isNaN(months)) return;
+    if (isNaN(amount) || amount <= 0 || isNaN(percentage) || isNaN(months)) return;
     const payload = {
-      bankId: f.bankId,
+      bankId: f.bankId || undefined,
       toBankId: f.toBankId || undefined,
       startDate: f.startDate,
       amount,
       percentage,
       months,
+      remarks: f.remarks.trim() || undefined,
     };
     const id = this.editingId();
     if (id) {

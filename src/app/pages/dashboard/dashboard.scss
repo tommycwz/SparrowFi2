@@ -26,8 +26,22 @@
 
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .stats-bar .stat-value {
+    font-size: 0.85rem;
+  }
+
+  .stats-bar .stat-label {
+    font-size: 0.62rem;
+  }
+
+  .stats-bar .stat {
+    padding: 0.3rem 0.35rem;
+  }
 }
 
 .stat {
@@ -305,6 +319,10 @@
   background: var(--danger);
 }
 
+.legend-dot.commitment {
+  background: var(--commitment);
+}
+
 .cash-flow-chart {
   display: flex;
   align-items: stretch;
@@ -332,8 +350,8 @@
 }
 
 .cash-flow-bar {
-  width: 40%;
-  max-width: 16px;
+  width: 28%;
+  max-width: 14px;
   border-radius: 4px 4px 0 0;
   min-height: 2px;
 }
@@ -344,6 +362,10 @@
 
 .cash-flow-bar.expense {
   background: var(--danger);
+}
+
+.cash-flow-bar.commitment {
+  background: var(--commitment);
 }
 
 .cash-flow-label {

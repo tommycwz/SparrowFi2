@@ -123,6 +123,15 @@ describe('ReportsPage', () => {
       expect(label.startsWith('-')).toBe(true);
       expect(label.lastIndexOf('-')).toBe(0);
     });
+
+    it('breaks Commitment out as its own total (not lumped into Others Out), and still subtracts it from net', () => {
+      page.month.set(THIS_MONTH);
+      state.addTransaction({ date: TODAY, amount: 300, type: 'commitment', accountType: 'cash' });
+      const t = page.totals();
+      expect(t.commitment).toBe(300);
+      expect(t.othersOut).toBe(50); // unchanged - the others-out transaction from beforeEach only
+      expect(t.net).toBe(1000 - 400 - 300);
+    });
   });
 
   describe('income/expense analysis', () => {
@@ -162,6 +171,24 @@ describe('ReportsPage', () => {
       const expense = page.expenseAnalysis();
       expect(expense.total).toBe(200);
       expect(expense.items[0].name).toBe('Groceries');
+    });
+
+    it('groups Commitment transactions separately, in their own analysis', () => {
+      state.addCategory({ name: 'Housing (Rent / Mortgage)', color: '#7C3AED', type: 'commitment' });
+      const housing = state.state()!.categories.find((c) => c.type === 'commitment')!;
+      state.addTransaction({
+        date: TODAY,
+        amount: 1500,
+        type: 'commitment',
+        accountType: 'cash',
+        categoryId: housing.id,
+      });
+
+      const commitment = page.commitmentAnalysis();
+      expect(commitment.total).toBe(1500);
+      expect(commitment.items[0].name).toBe('Housing (Rent / Mortgage)');
+      // Commitment transactions never show up in the plain Expenses analysis.
+      expect(page.expenseAnalysis().total).toBe(200);
     });
 
     it('turns each analysis into donut segments that sum to a full 100-unit ring', () => {
@@ -258,6 +285,22 @@ describe('ReportsPage', () => {
       expect(amex.categories.map((c) => c.name)).toEqual(['Dining']);
       expect(amex.categories[0].amount).toBe(100);
     });
+
+    it('counts a Commitment transaction on a card as spending too (e.g. a BNPL installment)', () => {
+      const [visa] = state.state()!.cards;
+      state.addTransaction({
+        date: TODAY,
+        amount: 250,
+        type: 'commitment',
+        accountType: 'card',
+        accountId: visa.id,
+      });
+
+      const cards = page.cardSpendingAnalysis();
+      const visaSlice = cards.items.find((c) => c.name === 'Visa')!;
+      expect(visaSlice.amount).toBe(300 + 250);
+      expect(cards.total).toBe(400 + 250);
+    });
   });
 
   describe('monthlyBreakdown', () => {
@@ -294,28 +337,85 @@ describe('ReportsPage', () => {
     });
   });
 
-  describe('summary', () => {
-    it('computes a positive savings rate and identifies the top category on each side', () => {
-      state.addCategory({ name: 'Salary', color: '#22C55E', type: 'income' });
-      state.addCategory({ name: 'Rent', color: '#EF4444', type: 'expense' });
-      const salary = state.state()!.categories.find((c) => c.type === 'income')!;
-      const rent = state.state()!.categories.find((c) => c.type === 'expense')!;
-      state.addTransaction({ date: TODAY, amount: 1000, type: 'income', accountType: 'cash', categoryId: salary.id });
-      state.addTransaction({ date: TODAY, amount: 300, type: 'expense', accountType: 'cash', categoryId: rent.id });
-      page.month.set(THIS_MONTH);
-
-      const s = page.summary();
-      expect(s.count).toBe(2);
-      expect(s.savingsRate).toBe(70); // net 700 / income 1000
-      expect(s.topIncome?.name).toBe('Salary');
-      expect(s.topExpense?.name).toBe('Rent');
-      expect(s.avgTransaction).toBe(650); // (1000 + 300) / 2
+  describe('investmentBreakdown', () => {
+    beforeEach(() => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
     });
 
-    it('reports a 0% savings rate rather than NaN/Infinity when there is no income', () => {
-      page.month.set(THIS_MONTH);
-      expect(page.summary().savingsRate).toBe(0);
-      expect(page.summary().topIncome).toBeNull();
+    it('is empty with a zero max when there are no investments', () => {
+      expect(page.investmentBreakdown()).toEqual({ bars: [], max: 0 });
+    });
+
+    it('shows only the base (invested) segment for a still-active investment', () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+
+      const [bar] = page.investmentBreakdown().bars;
+      expect(bar.status).toBe('active');
+      expect(bar.baseAmount).toBe(1000);
+      expect(bar.gain).toBe(0);
+      expect(bar.loss).toBe(0);
+      expect(bar.total).toBe(1000);
+    });
+
+    it('splits a completed gain into a base segment plus a separate gain segment', () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+      const [inv] = state.state()!.investments;
+      state.completeInvestment(inv.id, TODAY, 1300);
+
+      const [bar] = page.investmentBreakdown().bars;
+      expect(bar.status).toBe('completed');
+      expect(bar.baseAmount).toBe(1000);
+      expect(bar.gain).toBe(300);
+      expect(bar.loss).toBe(0);
+      expect(bar.total).toBe(1300); // base + gain
+    });
+
+    it('splits a completed loss into a shorter base segment plus a separate loss segment, total unchanged', () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Risky Bet',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+      const [inv] = state.state()!.investments;
+      state.completeInvestment(inv.id, TODAY, 700);
+
+      const [bar] = page.investmentBreakdown().bars;
+      expect(bar.status).toBe('completed');
+      expect(bar.baseAmount).toBe(700);
+      expect(bar.gain).toBe(0);
+      expect(bar.loss).toBe(300);
+      expect(bar.total).toBe(1000); // base + loss, same as the original invested amount
+    });
+
+    it("isn't affected by the report's period filter, same as Current Asset Balances", () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Old Investment',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 500,
+        date: '2020-01-01',
+      });
+      page.month.set(THIS_MONTH); // a period that doesn't include 2020-01-01
+
+      expect(page.investmentBreakdown().bars.length).toBe(1);
     });
   });
 
@@ -349,8 +449,20 @@ describe('ReportsPage', () => {
       fixture.detectChanges();
 
       const stats = fixture.nativeElement.querySelectorAll('.stat .stat-value');
-      const netEl = stats[2] as HTMLElement;
+      const netEl = stats[3] as HTMLElement; // Total Income, Total Commitments, Total Expenses, Net Cash Flow
       expect(netEl.classList.contains('negative')).toBe(true);
+    });
+
+    it('renders a Fixed Commitments Analysis section, separate from Variable Expenses Analysis', () => {
+      page.month.set(THIS_MONTH);
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      const headings = Array.from(el.querySelectorAll('.section-head h2')).map((h) => h.textContent?.trim());
+      expect(headings).toContain('Fixed Commitments Analysis');
+      expect(headings).toContain('Variable Expenses Analysis');
+      expect(el.textContent).toContain('No fixed commitments recorded in this period.');
     });
 
     it('renders the current account balances regardless of the selected report period', () => {
@@ -360,6 +472,28 @@ describe('ReportsPage', () => {
 
       const el = fixture.nativeElement as HTMLElement;
       expect(el.querySelector('.account-card .acc-name')?.textContent).toContain('Maybank');
+    });
+
+    it('shows the Investments empty state when there are none, and a bar per investment once added', () => {
+      page.month.set(THIS_MONTH);
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      const headings = Array.from(el.querySelectorAll('.section-head h2')).map((h) => h.textContent?.trim());
+      expect(headings).toContain('Investments');
+      expect(el.textContent).toContain('No investments recorded yet.');
+
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.investment-label')?.textContent).toContain('Tech Stock');
     });
 
     it('shows the Card/Wallet Spending Analysis empty states when neither has any expenses', () => {

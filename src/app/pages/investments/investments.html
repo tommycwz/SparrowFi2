@@ -1,0 +1,185 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Investments</h1>
+    <button type="button" class="btn btn-primary" (click)="openAdd()">
+      <sf-icon name="plus" [size]="16" /> Add
+    </button>
+  </div>
+
+  @if (!hasFunds()) {
+    <div class="banner banner-info">
+      <sf-icon name="info" [size]="16" />
+      <span>You can record an investment without a bank or wallet - it'll be tracked as a memo only.</span>
+    </div>
+  }
+
+  @if (investments().length === 0) {
+    <div class="empty-state card">
+      <sf-icon name="trending-up" [size]="28" />
+      <p>No investments recorded yet.</p>
+    </div>
+  } @else {
+    <div class="stack">
+      @for (inv of investments(); track inv.id) {
+        <div class="card inv-card">
+          <div class="inv-head" (click)="openEdit(inv)">
+            <div>
+              <div class="inv-name">{{ inv.name }}</div>
+              <div class="muted small">
+                {{ fundName(inv.fromAccountType, inv.fromAccountId) }} → {{ fundName(inv.toAccountType, inv.toAccountId) }}
+              </div>
+              @if (inv.remarks) {
+                <div class="inv-remarks muted small">{{ inv.remarks }}</div>
+              }
+            </div>
+            <span class="status-badge" [class]="'status-' + inv.status">{{ inv.status }}</span>
+          </div>
+          <div class="inv-body" (click)="openEdit(inv)">
+            <div>
+              <div class="muted small">Invested</div>
+              <div class="inv-value">{{ money(inv.amount) }}</div>
+            </div>
+            <div>
+              <div class="muted small">Date</div>
+              <div class="inv-value">{{ inv.date }}</div>
+            </div>
+            @if (inv.status === 'completed') {
+              <div>
+                <div class="muted small">Final Amount ({{ inv.completionDate }})</div>
+                <div class="inv-value">{{ money(inv.finalAmount ?? 0) }}</div>
+              </div>
+              <div>
+                <div class="muted small">Gain / Loss</div>
+                @let d = delta(inv);
+                <div class="inv-value" [class.inv-gain]="(d ?? 0) > 0" [class.inv-loss]="(d ?? 0) < 0">
+                  {{ (d ?? 0) >= 0 ? '+' : '' }}{{ money(d ?? 0) }}
+                </div>
+              </div>
+            }
+          </div>
+          <div class="inv-actions">
+            @if (inv.status === 'active') {
+              <button type="button" class="btn btn-secondary" (click)="openComplete(inv)">Complete Investment</button>
+            }
+            <button type="button" class="btn btn-danger" (click)="remove(inv.id)">Delete</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit Investment' : 'Add Investment'" (close)="showModal.set(false)">
+    <div class="field-row">
+      <label>
+        Name
+        <input
+          type="text"
+          [ngModel]="form().name"
+          (ngModelChange)="form.update((f) => ({ ...f, name: $event }))"
+        />
+      </label>
+      <label>
+        From fund (optional)
+        <select
+          [ngModel]="form().fromFund"
+          (ngModelChange)="form.update((f) => ({ ...f, fromFund: $event }))"
+        >
+          <option value="">None (outside SparrowFi)</option>
+          @if (banks().length > 0) {
+            <optgroup label="Banks">
+              @for (b of banks(); track b.id) {
+                <option [value]="'bank:' + b.id">{{ b.name }}</option>
+              }
+            </optgroup>
+          }
+          @if (wallets().length > 0) {
+            <optgroup label="Wallets">
+              @for (w of wallets(); track w.id) {
+                <option [value]="'wallet:' + w.id">{{ w.name }}</option>
+              }
+            </optgroup>
+          }
+        </select>
+      </label>
+      <label>
+        To fund (optional)
+        <select
+          [ngModel]="form().toFund"
+          (ngModelChange)="form.update((f) => ({ ...f, toFund: $event }))"
+        >
+          <option value="">None (outside SparrowFi)</option>
+          @if (banks().length > 0) {
+            <optgroup label="Banks">
+              @for (b of banks(); track b.id) {
+                <option [value]="'bank:' + b.id">{{ b.name }}</option>
+              }
+            </optgroup>
+          }
+          @if (wallets().length > 0) {
+            <optgroup label="Wallets">
+              @for (w of wallets(); track w.id) {
+                <option [value]="'wallet:' + w.id">{{ w.name }}</option>
+              }
+            </optgroup>
+          }
+        </select>
+      </label>
+      <label>
+        Amount
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="form().amount"
+          (ngModelChange)="form.update((f) => ({ ...f, amount: $event }))"
+        />
+      </label>
+      <label>
+        Date
+        <input
+          type="date"
+          [ngModel]="form().date"
+          (ngModelChange)="form.update((f) => ({ ...f, date: $event }))"
+        />
+      </label>
+      <label>
+        Remarks
+        <input
+          type="text"
+          [ngModel]="form().remarks"
+          (ngModelChange)="form.update((f) => ({ ...f, remarks: $event }))"
+          placeholder="Optional"
+        />
+      </label>
+    </div>
+    <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}
+
+@if (completingId()) {
+  <sf-modal title="Complete Investment" (close)="cancelComplete()">
+    <div class="field-row">
+      <label>
+        Completion date
+        <input
+          type="date"
+          [ngModel]="completeForm().completionDate"
+          (ngModelChange)="completeForm.update((f) => ({ ...f, completionDate: $event }))"
+        />
+      </label>
+      <label>
+        Final amount received
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="completeForm().finalAmount"
+          (ngModelChange)="completeForm.update((f) => ({ ...f, finalAmount: $event }))"
+        />
+      </label>
+    </div>
+    <button type="button" class="btn btn-primary btn-block" (click)="saveComplete()">Complete</button>
+  </sf-modal>
+}

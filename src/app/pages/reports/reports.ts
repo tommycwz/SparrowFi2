@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
-import { CURRENCIES, Transaction, TransactionType } from '../../core/models';
+import { CURRENCIES, InvestmentStatus, Transaction, TransactionType } from '../../core/models';
+import { investmentGainValue, investmentLossValue } from '../../core/investment.util';
 import { formatAmountNumber, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 
@@ -33,6 +34,27 @@ interface MonthFlow {
   label: string;
   income: number;
   expense: number;
+}
+
+/** One stacked bar's worth of drawing data for the Investments chart - see
+ * `investmentBreakdown` for how the three segments are derived. */
+interface InvestmentBar {
+  id: string;
+  name: string;
+  status: InvestmentStatus;
+  amount: number;
+  finalAmount?: number;
+  /** Neutral base segment - the smaller of what went in and what (if
+   * anything) has come back out so far. */
+  baseAmount: number;
+  /** Green segment stacked on top of the base, only when completed above
+   * the invested amount. */
+  gain: number;
+  /** Red segment stacked on top of the base, only when completed below
+   * the invested amount - visually "the part that didn't come back". */
+  loss: number;
+  /** Full bar height for scaling - `max(amount, finalAmount ?? amount)`. */
+  total: number;
 }
 
 const CATEGORY_COLOR_FALLBACK = '#94A3B8';
@@ -180,6 +202,7 @@ export class ReportsPage {
   readonly totals = computed(() => {
     let income = 0;
     let expense = 0;
+    let commitment = 0;
     let othersIn = 0;
     let othersOut = 0;
     let count = 0;
@@ -187,10 +210,11 @@ export class ReportsPage {
       count++;
       if (t.type === 'income') income += t.amount;
       else if (t.type === 'expense') expense += t.amount;
+      else if (t.type === 'commitment') commitment += t.amount;
       else if (t.type === 'others-in') othersIn += t.amount;
       else othersOut += t.amount;
     }
-    return { income, expense, net: income - expense, othersIn, othersOut, count };
+    return { income, expense, commitment, net: income - expense - commitment, othersIn, othersOut, count };
   });
 
   /** "Net Cash Flow" stat value - sign-then-symbol-then-magnitude, the same
@@ -267,6 +291,13 @@ export class ReportsPage {
 
   readonly incomeAnalysis = computed(() => this.categoryBreakdownFor('income'));
   readonly expenseAnalysis = computed(() => this.categoryBreakdownFor('expense'));
+  /** "Fixed Commitments Analysis" - the same category breakdown as Income/
+   * Expenses Analysis, but for `type: 'commitment'` transactions (recurring
+   * obligations - rent, loan installments, insurance, subscriptions - see
+   * `TransactionType`), kept as its own section rather than folded into
+   * Expenses Analysis since that's the whole point of the two being
+   * separate types. */
+  readonly commitmentAnalysis = computed(() => this.categoryBreakdownFor('commitment'));
 
   /** Groups an arbitrary set of already-filtered expense transactions by
    * category - the same shape `categoryBreakdownFor` produces for the whole
@@ -292,16 +323,17 @@ export class ReportsPage {
   }
 
   /** Same idea as `categoryBreakdownFor`, but for "which specific card/wallet
-   * is this expense money coming out of" rather than "what was it spent on" -
-   * only expense transactions made through that account type are counted, so
-   * a card's own spending analysis doesn't include incoming refunds/transfers
-   * ('others-in'/'others-out') routed through the same card. Bank spending
-   * isn't broken out the same way since Expenses Analysis above already
-   * covers total spend by category regardless of which account paid for it,
-   * and Cash/Others have no individually-named accounts to split by. Each
-   * resulting slice also carries its own category breakdown (via
-   * `categorySlicesFor`), so the report can show what a card was actually
-   * spent on, not just how much. */
+   * is this money coming out of" rather than "what was it spent on" - both
+   * Expense and Commitment transactions count (a BNPL installment on a card
+   * is still money leaving that card), so a card's own spending analysis
+   * doesn't include incoming refunds/transfers ('others-in'/'others-out')
+   * routed through the same card. Bank spending isn't broken out the same
+   * way since Expenses/Commitments Analysis above already cover total spend
+   * by category regardless of which account paid for it, and Cash/Others
+   * have no individually-named accounts to split by. Each resulting slice
+   * also carries its own category breakdown (via `categorySlicesFor`), so
+   * the report can show what a card was actually spent on, not just how
+   * much. */
   private accountSpendingBreakdownFor(
     accountType: 'card' | 'wallet',
   ): { items: AccountSpendingSlice[]; total: number } {
@@ -311,7 +343,8 @@ export class ReportsPage {
 
     const byAccount = new Map<string, Transaction[]>();
     for (const t of this.filteredTransactions()) {
-      if (t.type !== 'expense' || t.accountType !== accountType) continue;
+      const isOutflow = t.type === 'expense' || t.type === 'commitment';
+      if (!isOutflow || t.accountType !== accountType) continue;
       const key = t.accountId ?? '__unknown__';
       const bucket = byAccount.get(key);
       if (bucket) bucket.push(t);
@@ -374,10 +407,14 @@ export class ReportsPage {
 
   readonly incomeDonutSegments = computed(() => this.toDonutSegments(this.incomeAnalysis()));
   readonly expenseDonutSegments = computed(() => this.toDonutSegments(this.expenseAnalysis()));
+  readonly commitmentDonutSegments = computed(() => this.toDonutSegments(this.commitmentAnalysis()));
   readonly cardSpendingDonutSegments = computed(() => this.toDonutSegments(this.cardSpendingAnalysis()));
   readonly walletSpendingDonutSegments = computed(() => this.toDonutSegments(this.walletSpendingAnalysis()));
 
   // ----- Monthly cash flow (range/year views only) ----------------------------
+  // Deliberately a two-series (income/expense) chart, same as Dashboard's
+  // Cash Flow widget - Commitment isn't folded in as a third series here;
+  // `totals().commitment` and the stats bar above still account for it.
 
   readonly monthlyBreakdown = computed<{ months: MonthFlow[]; max: number }>(() => {
     if (!this.hasMonthlyChart()) return { months: [], max: 0 };
@@ -417,6 +454,39 @@ export class ReportsPage {
     return max > 0 ? (value / max) * 100 : 0;
   }
 
+  // ----- Investments -----------------------------------------------------------
+  // Deliberately every investment regardless of the period filter above (an
+  // investment can span months between opening and completing), same
+  // "current, not period-scoped" reasoning as Current Asset Balances below -
+  // one bar per investment, principal as the neutral base segment plus
+  // whatever it gained (green, stacked on top) or lost (red, stacked on
+  // top) once completed. A still-active investment is just the base
+  // segment, since there's nothing to show yet.
+
+  readonly investmentBreakdown = computed<{ bars: InvestmentBar[]; max: number }>(() => {
+    const investments = [...(this.state.state()?.investments ?? [])].sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+    const bars: InvestmentBar[] = investments.map((inv) => {
+      const gain = investmentGainValue(inv);
+      const loss = investmentLossValue(inv);
+      const finalOrAmount = inv.finalAmount ?? inv.amount;
+      return {
+        id: inv.id,
+        name: inv.name,
+        status: inv.status,
+        amount: inv.amount,
+        finalAmount: inv.finalAmount,
+        baseAmount: Math.min(inv.amount, finalOrAmount),
+        gain,
+        loss,
+        total: Math.max(inv.amount, finalOrAmount),
+      };
+    });
+    const max = Math.max(0, ...bars.map((b) => b.total));
+    return { bars, max };
+  });
+
   // ----- Current asset balances ------------------------------------------------
   // Deliberately today's live balances (via `state.accountBalances()`), not
   // recomputed as of the report period's end date - "current" means now,
@@ -425,23 +495,6 @@ export class ReportsPage {
   // the period-scoped analysis above it.
 
   readonly netWorthLabel = computed(() => this.money(this.state.netWorth()));
-
-  // ----- Summary ---------------------------------------------------------------
-
-  readonly summary = computed(() => {
-    const t = this.totals();
-    const income = this.incomeAnalysis();
-    const expense = this.expenseAnalysis();
-    const savingsRate = t.income > 0 ? (t.net / t.income) * 100 : 0;
-    const avgTransaction = t.count > 0 ? (t.income + t.expense) / t.count : 0;
-    return {
-      count: t.count,
-      avgTransaction,
-      savingsRate,
-      topIncome: income.items[0] ?? null,
-      topExpense: expense.items[0] ?? null,
-    };
-  });
 
   // ----- Formatting helpers ----------------------------------------------------
 

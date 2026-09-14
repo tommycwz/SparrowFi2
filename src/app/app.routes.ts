@@ -25,6 +25,11 @@ export const routes: Routes = [
       import('./pages/fixed-deposits/fixed-deposits').then((m) => m.FixedDepositsPage),
   },
   {
+    path: 'investments',
+    loadComponent: () =>
+      import('./pages/investments/investments').then((m) => m.InvestmentsPage),
+  },
+  {
     path: 'reports',
     loadComponent: () => import('./pages/reports/reports').then((m) => m.ReportsPage),
   },

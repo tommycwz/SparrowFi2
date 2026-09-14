@@ -1,10 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
-import { Category, DEFAULT_CATEGORY_COLORS, TransactionType } from '../../core/models';
+import { Category, DEFAULT_CATEGORY_COLORS, TRANSACTION_TYPE_LABELS, TransactionType } from '../../core/models';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 import { ColorPickerComponent } from '../../shared/color-picker';
+
+/** Tab order for the Categories page - Income/Expense/Commitment first
+ * (the "real" money-in/money-out types), then the two Others directions. */
+const TABS: TransactionType[] = ['income', 'expense', 'commitment', 'others-in', 'others-out'];
 
 @Component({
   selector: 'app-categories',
@@ -16,6 +20,7 @@ import { ColorPickerComponent } from '../../shared/color-picker';
 })
 export class CategoriesPage {
   readonly colors = DEFAULT_CATEGORY_COLORS;
+  readonly tabs = TABS;
   readonly showModal = signal(false);
   readonly editingId = signal<string | null>(null);
   readonly name = signal('');
@@ -27,33 +32,29 @@ export class CategoriesPage {
 
   readonly allCategories = computed(() => this.state.state()?.categories ?? []);
 
-  readonly categories = computed(() =>
-    this.allCategories().filter((c) => c.type === this.tab()),
-  );
+  /** Categories for the active tab. */
+  readonly categories = computed(() => {
+    const t = this.tab();
+    return this.allCategories().filter((c) => c.type === t);
+  });
 
   /** Per-tab counts so each tab can show how many categories it holds. */
   readonly tabCounts = computed(() => {
     const counts: Record<TransactionType, number> = {
       income: 0,
       expense: 0,
+      commitment: 0,
       'others-in': 0,
       'others-out': 0,
     };
-    for (const c of this.allCategories()) counts[c.type]++;
+    for (const c of this.allCategories()) {
+      counts[c.type]++;
+    }
     return counts;
   });
 
   typeLabel(type: TransactionType): string {
-    switch (type) {
-      case 'income':
-        return 'Income';
-      case 'expense':
-        return 'Expense';
-      case 'others-in':
-        return 'Others (In)';
-      case 'others-out':
-        return 'Others (Out)';
-    }
+    return TRANSACTION_TYPE_LABELS[type];
   }
 
   openAdd(): void {
@@ -82,7 +83,12 @@ export class CategoriesPage {
     this.showModal.set(false);
   }
 
+  /** No-ops for a `locked` category - the delete button is hidden for
+   * those (see `Category.locked`), but this guards against calling it any
+   * other way too. */
   remove(id: string): void {
+    const category = this.allCategories().find((c) => c.id === id);
+    if (!category || category.locked) return;
     if (confirm('Delete this category? Transactions using it become uncategorized.')) {
       this.state.removeCategory(id);
     }

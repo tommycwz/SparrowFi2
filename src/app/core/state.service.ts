@@ -5,14 +5,15 @@ import {
   Card,
   Category,
   FixedDeposit,
+  Investment,
   Transaction,
   Wallet,
   createEmptyState,
 } from './models';
 import { CloudDataService } from './cloud-data.service';
 import { generateId } from './id.util';
-import { createDefaultCategories } from './default-categories';
-import { fdMaturityDate, fdMaturityValue } from './fixed-deposit.util';
+import { createDefaultCategories, ensureRequiredCategories } from './default-categories';
+import { fdGainValue, fdMaturityDate } from './fixed-deposit.util';
 
 export interface AccountBalance {
   kind: 'bank' | 'wallet' | 'card' | 'bucket';
@@ -111,8 +112,50 @@ export class StateService {
     return balances;
   });
 
-  readonly netWorth = computed(() =>
-    this.accountBalances().reduce((sum, a) => sum + a.balance, 0),
+  /** Principal locked away in still-`active` fixed deposits (no projected
+   * interest included - only the money actually committed). Counted
+   * whether or not the FD has a bank: when it does, this corrects for that
+   * bank's balance already having dropped by the same amount (see
+   * `addFixedDeposit`); when it doesn't (a bank-less FD tracked purely as
+   * a memo), this is simply the new wealth the FD record itself
+   * discloses - either way, this is what keeps Net Worth accurate. A
+   * `matured` or `withdrawn` FD's principal is deliberately excluded here:
+   * the moment an FD matures, `updateFixedDeposit` immediately books its
+   * principal back as an "others-in" transaction (plus its interest as a
+   * separate "income" one) when it has a bank, so that money already shows
+   * up in the destination account's own balance - counting it here too
+   * would double it. */
+  readonly activeFixedDepositTotal = computed(() =>
+    (this._state()?.fixedDeposits ?? [])
+      .filter((fd) => fd.status === 'active')
+      .reduce((sum, fd) => sum + fd.amount, 0),
+  );
+
+  /** Same idea as `activeFixedDepositTotal`, for Investments - the invested
+   * amount of every still-`active` investment, with or without a "from
+   * fund" (no projected gain/loss included, since that isn't known until
+   * it completes). Excludes `completed` investments for the same reason
+   * `activeFixedDepositTotal` excludes matured/withdrawn FDs: the moment
+   * one completes, `completeInvestment` books its payout straight into the
+   * destination account's own balance, so counting it here too would
+   * double it. */
+  readonly activeInvestmentTotal = computed(() =>
+    (this._state()?.investments ?? [])
+      .filter((inv) => inv.status === 'active')
+      .reduce((sum, inv) => sum + inv.amount, 0),
+  );
+
+  /** Total account balances plus money currently locked away in active
+   * fixed deposits and active investments - without this, placing an FD or
+   * opening an investment makes Net Worth look like it dropped by that
+   * amount, when really that money hasn't gone anywhere (or, for a
+   * bank-less one, wasn't counted at all until you told SparrowFi about
+   * it). */
+  readonly netWorth = computed(
+    () =>
+      this.accountBalances().reduce((sum, a) => sum + a.balance, 0) +
+      this.activeFixedDepositTotal() +
+      this.activeInvestmentTotal(),
   );
 
   constructor(private readonly cloudData: CloudDataService) {}
@@ -122,10 +165,17 @@ export class StateService {
   /** Loads the signed-in account's data from Supabase (decrypting
    * client-side), or seeds a fresh empty state with the default category
    * list for a brand-new account that hasn't saved anything yet. Called by
-   * the Launcher right after a successful sign-in/sign-up. */
+   * the Launcher right after a successful sign-in/sign-up. An existing
+   * account is topped up with any category the app depends on by name that
+   * it's missing (`ensureRequiredCategories`) - there's no more manual
+   * "Load Suggested Categories" step to do that by hand. */
   async load(): Promise<void> {
     const loaded = await this.cloudData.load();
-    this._state.set(loaded ?? { ...createEmptyState(), categories: createDefaultCategories() });
+    this._state.set(
+      loaded
+        ? { ...loaded, categories: ensureRequiredCategories(loaded.categories) }
+        : { ...createEmptyState(), categories: createDefaultCategories() },
+    );
     this._dirty.set(false);
   }
 
@@ -195,36 +245,42 @@ export class StateService {
   }
 
   /** Creates a bank. `bank.initialCapital`, if non-zero, is recorded as an
-   * "Initial balance" transaction rather than stored on the bank record
-   * itself - same pattern `migrateState` uses for a legacy file's
-   * initialCapital, so a bank's balance is always "opening transaction +
-   * everything since" with nothing to double-count. This also means there
-   * is no `initialCapital` field left to edit afterwards: `updateBank`
-   * only ever touches name/color, by design - a bank's opening balance is
-   * a one-time thing set at creation, not something you come back and
-   * change later (adjust it with a regular transaction instead). */
+   * "Initial balance" transaction (categorized as "Adjustment (In)" when
+   * that locked category exists - see `Category.locked`) rather than
+   * stored on the bank record itself - same pattern `migrateState` uses
+   * for a legacy file's initialCapital, so a bank's balance is always
+   * "opening transaction + everything since" with nothing to double-count.
+   * This also means there is no `initialCapital` field left to edit
+   * afterwards: `updateBank` only ever touches name/color, by design - a
+   * bank's opening balance is a one-time thing set at creation, not
+   * something you come back and change later (adjust it with a regular
+   * transaction instead). */
   addBank(bank: Omit<Bank, 'id'>): void {
     const id = generateId();
     const capital = bank.initialCapital || 0;
-    this.updateState((s) => ({
-      ...s,
-      banks: [...s.banks, { name: bank.name, color: bank.color, id, initialCapital: 0 }],
-      transactions:
-        capital !== 0
-          ? [
-              ...s.transactions,
-              {
-                id: generateId(),
-                date: new Date().toISOString().slice(0, 10),
-                amount: Math.abs(capital),
-                type: 'others-in',
-                accountType: 'bank',
-                accountId: id,
-                notes: 'Initial balance',
-              },
-            ]
-          : s.transactions,
-    }));
+    this.updateState((s) => {
+      const category = s.categories.find((c) => c.type === 'others-in' && c.name === 'Adjustment (In)');
+      return {
+        ...s,
+        banks: [...s.banks, { name: bank.name, color: bank.color, id, initialCapital: 0 }],
+        transactions:
+          capital !== 0
+            ? [
+                ...s.transactions,
+                {
+                  id: generateId(),
+                  date: new Date().toISOString().slice(0, 10),
+                  amount: Math.abs(capital),
+                  type: 'others-in',
+                  accountType: 'bank',
+                  accountId: id,
+                  categoryId: category?.id,
+                  notes: 'Initial balance',
+                },
+              ]
+            : s.transactions,
+      };
+    });
   }
   /** Name/color only - see `addBank` for why initial capital isn't here. */
   updateBank(id: string, patch: Pick<Bank, 'name' | 'color'>): void {
@@ -253,25 +309,29 @@ export class StateService {
   addWallet(wallet: Omit<Wallet, 'id'>): void {
     const id = generateId();
     const capital = wallet.initialCapital || 0;
-    this.updateState((s) => ({
-      ...s,
-      wallets: [...s.wallets, { name: wallet.name, color: wallet.color, id, initialCapital: 0 }],
-      transactions:
-        capital !== 0
-          ? [
-              ...s.transactions,
-              {
-                id: generateId(),
-                date: new Date().toISOString().slice(0, 10),
-                amount: Math.abs(capital),
-                type: 'others-in',
-                accountType: 'wallet',
-                accountId: id,
-                notes: 'Initial balance',
-              },
-            ]
-          : s.transactions,
-    }));
+    this.updateState((s) => {
+      const category = s.categories.find((c) => c.type === 'others-in' && c.name === 'Adjustment (In)');
+      return {
+        ...s,
+        wallets: [...s.wallets, { name: wallet.name, color: wallet.color, id, initialCapital: 0 }],
+        transactions:
+          capital !== 0
+            ? [
+                ...s.transactions,
+                {
+                  id: generateId(),
+                  date: new Date().toISOString().slice(0, 10),
+                  amount: Math.abs(capital),
+                  type: 'others-in',
+                  accountType: 'wallet',
+                  accountId: id,
+                  categoryId: category?.id,
+                  notes: 'Initial balance',
+                },
+              ]
+            : s.transactions,
+      };
+    });
   }
   /** Name/color only - see `addBank` for why initial capital isn't here. */
   updateWallet(id: string, patch: Pick<Wallet, 'name' | 'color'>): void {
@@ -371,8 +431,11 @@ export class StateService {
   /** Creating a fixed deposit is money leaving a bank account, so this also
    * records an "others-out" transaction against that bank for the
    * principal - same as the other account-opening flows in this file (see
-   * `migrateState`'s "Initial balance" transactions). Uses the "Investment
-   * (Out)" default category when present, but works fine without it. */
+   * `migrateState`'s "Initial balance" transactions) - skipped entirely
+   * when no bank was chosen (the FD is tracked purely as a memo). Uses the
+   * "Investment (Out)" locked default category when present, but works
+   * fine without it - see `Category.locked` for why Fixed Deposits and
+   * Investments share the same three categories. */
   addFixedDeposit(fd: Omit<FixedDeposit, 'id'>): void {
     const id = generateId();
     this.updateState((s) => {
@@ -380,82 +443,151 @@ export class StateService {
       const category = s.categories.find(
         (c) => c.type === 'others-out' && c.name === 'Investment (Out)',
       );
+      const transactions: Transaction[] = fd.bankId
+        ? [
+            ...s.transactions,
+            {
+              id: generateId(),
+              fdId: id,
+              date: fd.startDate,
+              amount: fd.amount,
+              type: 'others-out',
+              accountType: 'bank',
+              accountId: fd.bankId,
+              categoryId: category?.id,
+              notes: `Fixed Deposit${bank ? ' - ' + bank.name : ''}`,
+            },
+          ]
+        : s.transactions;
       return {
         ...s,
         fixedDeposits: [...s.fixedDeposits, { ...fd, id }],
-        transactions: [
-          ...s.transactions,
-          {
-            id: generateId(),
-            fdId: id,
-            date: fd.startDate,
-            amount: fd.amount,
-            type: 'others-out',
-            accountType: 'bank',
-            accountId: fd.bankId,
-            categoryId: category?.id,
-            notes: `Fixed Deposit${bank ? ' - ' + bank.name : ''}`,
-          },
-        ],
+        transactions,
       };
     });
   }
 
   /** Patches a fixed deposit and keeps any transaction(s) it previously
-   * generated in sync with the new values. The moment `status` transitions
-   * into 'matured' for the first time, this also records the maturity
-   * payout - principal + interest, credited to `toBankId` (or `bankId` if
-   * the proceeds go back to the same account) - as an "others-in"
-   * transaction, mirroring the opening one `addFixedDeposit` created. */
+   * generated in sync with the new values - including adding or dropping
+   * the opening transaction if `bankId` is set or cleared after creation,
+   * same as `updateInvestment` does for an investment's "from fund". The
+   * moment `status` transitions into 'matured' for the first time (or on
+   * any later edit to an already-matured/withdrawn FD), this also books
+   * the maturity payout - credited to `toBankId` (or `bankId` if the
+   * proceeds go back to the same account), or skipped entirely if neither
+   * is set - as an "others-in" transaction for the principal ("Investment
+   * (In)"), plus, only if there's an actual gain, a separate "income"
+   * transaction for it ("Investment Profit") so Income totals and Reports
+   * reflect the real gain instead of the whole payout looking like a
+   * transfer. The gains transaction is omitted (or removed, if one already
+   * existed) whenever there's nothing to book - e.g. a 0% FD. */
   updateFixedDeposit(id: string, patch: Partial<FixedDeposit>): void {
     this.updateState((s) => {
       const existing = s.fixedDeposits.find((f) => f.id === id);
       if (!existing) return s;
       const updated: FixedDeposit = { ...existing, ...patch, id };
-      const justMatured = existing.status === 'active' && updated.status === 'matured';
+      const hasMatured = updated.status === 'matured' || updated.status === 'withdrawn';
       const destBankId = updated.toBankId || updated.bankId;
 
       // Keep the opening (others-out) transaction lined up with the FD's
-      // current bank/amount/date, if this FD has one.
-      let transactions = s.transactions.map((t) =>
-        t.fdId === id && t.type === 'others-out'
-          ? { ...t, date: updated.startDate, amount: updated.amount, accountId: updated.bankId }
-          : t,
-      );
+      // current bank/amount/date - adding or dropping it if `bankId` was
+      // set or cleared since it was created.
+      const openingTx = s.transactions.find((t) => t.fdId === id && t.type === 'others-out');
+      let transactions = s.transactions;
+      if (updated.bankId) {
+        const openCategory = s.categories.find(
+          (c) => c.type === 'others-out' && c.name === 'Investment (Out)',
+        );
+        transactions = openingTx
+          ? transactions.map((t) =>
+              t.id === openingTx.id
+                ? { ...t, date: updated.startDate, amount: updated.amount, accountId: updated.bankId }
+                : t,
+            )
+          : [
+              ...transactions,
+              {
+                id: generateId(),
+                fdId: id,
+                date: updated.startDate,
+                amount: updated.amount,
+                type: 'others-out',
+                accountType: 'bank',
+                accountId: updated.bankId,
+                categoryId: openCategory?.id,
+                notes: `Fixed Deposit${s.banks.find((b) => b.id === updated.bankId) ? ' - ' + s.banks.find((b) => b.id === updated.bankId)!.name : ''}`,
+              },
+            ];
+      } else if (openingTx) {
+        transactions = transactions.filter((t) => t.id !== openingTx.id);
+      }
 
-      if (justMatured) {
+      if (hasMatured && destBankId) {
         const bank = s.banks.find((b) => b.id === destBankId);
-        const category = s.categories.find(
+        const maturityDate = fdMaturityDate(updated);
+        const principal = updated.amount;
+        const gain = fdGainValue(updated);
+
+        // Principal returned - a transfer back into the account, not new
+        // money, so it stays an "others-in" (mirrors the opening
+        // "others-out" `addFixedDeposit` created).
+        const principalCategory = s.categories.find(
           (c) => c.type === 'others-in' && c.name === 'Investment (In)',
         );
-        transactions = [
-          ...transactions,
-          {
-            id: generateId(),
-            fdId: id,
-            date: fdMaturityDate(updated),
-            amount: fdMaturityValue(updated),
-            type: 'others-in',
-            accountType: 'bank',
-            accountId: destBankId,
-            categoryId: category?.id,
-            notes: `Fixed Deposit matured${bank ? ' - ' + bank.name : ''}`,
-          },
-        ];
-      } else {
-        // Already-matured FD edited afterwards (bank/amount/rate/tenure
-        // changed) - keep its maturity transaction in sync too, rather than
-        // leaving it pointing at stale numbers.
-        transactions = transactions.map((t) =>
-          t.fdId === id && t.type === 'others-in'
-            ? {
-                ...t,
-                date: fdMaturityDate(updated),
-                amount: fdMaturityValue(updated),
+        const existingPrincipalTx = transactions.find((t) => t.fdId === id && t.type === 'others-in');
+        transactions = existingPrincipalTx
+          ? transactions.map((t) =>
+              t.id === existingPrincipalTx.id
+                ? { ...t, date: maturityDate, amount: principal, accountId: destBankId }
+                : t,
+            )
+          : [
+              ...transactions,
+              {
+                id: generateId(),
+                fdId: id,
+                date: maturityDate,
+                amount: principal,
+                type: 'others-in',
+                accountType: 'bank',
                 accountId: destBankId,
-              }
-            : t,
+                categoryId: principalCategory?.id,
+                notes: `Fixed Deposit matured - principal${bank ? ' - ' + bank.name : ''}`,
+              },
+            ];
+
+        // Interest/gains earned - real income, booked separately.
+        const gainCategory = s.categories.find(
+          (c) => c.type === 'income' && c.name === 'Investment Profit',
         );
+        const existingGainTx = transactions.find((t) => t.fdId === id && t.type === 'income');
+        if (gain > 0) {
+          transactions = existingGainTx
+            ? transactions.map((t) =>
+                t.id === existingGainTx.id
+                  ? { ...t, date: maturityDate, amount: gain, accountId: destBankId }
+                  : t,
+              )
+            : [
+                ...transactions,
+                {
+                  id: generateId(),
+                  fdId: id,
+                  date: maturityDate,
+                  amount: gain,
+                  type: 'income',
+                  accountType: 'bank',
+                  accountId: destBankId,
+                  categoryId: gainCategory?.id,
+                  notes: `Fixed Deposit matured - interest earned${bank ? ' - ' + bank.name : ''}`,
+                },
+              ];
+        } else if (existingGainTx) {
+          // Edited down to 0% (or less) after already having a gains
+          // transaction booked - drop it rather than leave a stale or
+          // zero-amount entry behind.
+          transactions = transactions.filter((t) => t.id !== existingGainTx.id);
+        }
       }
 
       return {
@@ -475,6 +607,248 @@ export class StateService {
       ...s,
       fixedDeposits: s.fixedDeposits.filter((f) => f.id !== id),
       transactions: s.transactions.filter((t) => t.fdId !== id),
+    }));
+  }
+
+  /** Creating an investment optionally moves money out of a "from fund"
+   * bank/wallet, so this also records an "others-out" transaction against
+   * that account for the invested amount - same pattern as
+   * `addFixedDeposit`, except entirely skipped when no "from fund" was
+   * chosen (the money came from somewhere outside SparrowFi's tracked
+   * accounts). Uses the "Investment (Out)" locked default category when
+   * present, but works fine without it. */
+  addInvestment(inv: Omit<Investment, 'id' | 'status'>): void {
+    const id = generateId();
+    this.updateState((s) => {
+      const category = s.categories.find(
+        (c) => c.type === 'others-out' && c.name === 'Investment (Out)',
+      );
+      const transactions: Transaction[] =
+        inv.fromAccountId && inv.fromAccountType
+          ? [
+              ...s.transactions,
+              {
+                id: generateId(),
+                investmentId: id,
+                date: inv.date,
+                amount: inv.amount,
+                type: 'others-out',
+                accountType: inv.fromAccountType,
+                accountId: inv.fromAccountId,
+                categoryId: category?.id,
+                notes: `Investment - ${inv.name}`,
+              },
+            ]
+          : s.transactions;
+      return {
+        ...s,
+        investments: [...s.investments, { ...inv, id, status: 'active' }],
+        transactions,
+      };
+    });
+  }
+
+  /** Patches an investment's own fields (name/amount/date/from fund/to
+   * fund) and keeps its opening "others-out" transaction in sync -
+   * mirrors `updateFixedDeposit`'s re-sync of the opening transaction, but
+   * also handles a "from fund" being added or removed after creation
+   * (adding/dropping that transaction rather than just patching it, since
+   * a Fixed Deposit's source account can never be unset the way an
+   * investment's can). Does NOT complete the investment - see
+   * `completeInvestment` for that, since completing needs a final amount
+   * this method doesn't take. */
+  updateInvestment(
+    id: string,
+    patch: Partial<Omit<Investment, 'id' | 'status' | 'completionDate' | 'finalAmount'>>,
+  ): void {
+    this.updateState((s) => {
+      const existing = s.investments.find((i) => i.id === id);
+      if (!existing) return s;
+      const updated: Investment = { ...existing, ...patch, id };
+      const openingTx = s.transactions.find(
+        (t) => t.investmentId === id && t.type === 'others-out',
+      );
+      let transactions = s.transactions;
+
+      if (updated.fromAccountId && updated.fromAccountType) {
+        const category = s.categories.find(
+          (c) => c.type === 'others-out' && c.name === 'Investment (Out)',
+        );
+        if (openingTx) {
+          transactions = transactions.map((t) =>
+            t.id === openingTx.id
+              ? {
+                  ...t,
+                  date: updated.date,
+                  amount: updated.amount,
+                  accountType: updated.fromAccountType!,
+                  accountId: updated.fromAccountId!,
+                }
+              : t,
+          );
+        } else {
+          transactions = [
+            ...transactions,
+            {
+              id: generateId(),
+              investmentId: id,
+              date: updated.date,
+              amount: updated.amount,
+              type: 'others-out',
+              accountType: updated.fromAccountType,
+              accountId: updated.fromAccountId,
+              categoryId: category?.id,
+              notes: `Investment - ${updated.name}`,
+            },
+          ];
+        }
+      } else if (openingTx) {
+        // "From fund" was cleared - drop the opening transaction rather
+        // than leave one pointing at an account the investment no longer
+        // claims to have come from.
+        transactions = transactions.filter((t) => t.id !== openingTx.id);
+      }
+
+      return {
+        ...s,
+        investments: s.investments.map((i) => (i.id === id ? updated : i)),
+        transactions,
+      };
+    });
+  }
+
+  /** Books an investment's completion, but only when a "to fund" account
+   * was chosen - a fund-less investment is a pure memo and completing it
+   * moves no money anywhere, so it's marked completed with no transactions
+   * at all (and any stale ones from an earlier "to fund" are removed).
+   * When there is a "to fund": the smaller of the invested amount and the
+   * final amount comes back as an "others-in" "Investment (In)" (so a loss
+   * simply shows up as a smaller principal return, with nothing else to
+   * categorize), and if `finalAmount` is higher than the invested amount,
+   * the excess is booked separately as "Investment Profit" income - that's
+   * what makes a real gain show up in Income/Reports instead of the whole
+   * payout looking like a neutral transfer. Safe to call again on an
+   * already-completed investment (e.g. correcting a typo'd final amount)
+   * - it re-syncs the transactions instead of duplicating them, and drops
+   * the gain transaction if a later correction erases it. */
+  completeInvestment(id: string, completionDate: string, finalAmount: number): void {
+    this.updateState((s) => {
+      const existing = s.investments.find((i) => i.id === id);
+      if (!existing) return s;
+      const updated: Investment = { ...existing, status: 'completed', completionDate, finalAmount };
+
+      let transactions = s.transactions;
+      const existingPrincipalTx = transactions.find(
+        (t) => t.investmentId === id && t.type === 'others-in',
+      );
+      const existingGainTx = transactions.find(
+        (t) => t.investmentId === id && t.type === 'income',
+      );
+
+      if (!updated.toAccountId || !updated.toAccountType) {
+        // No destination account - nothing to book, and drop any stale
+        // completion transactions from a "to fund" that was since cleared.
+        if (existingPrincipalTx) transactions = transactions.filter((t) => t.id !== existingPrincipalTx.id);
+        if (existingGainTx) transactions = transactions.filter((t) => t.id !== existingGainTx.id);
+        return {
+          ...s,
+          investments: s.investments.map((i) => (i.id === id ? updated : i)),
+          transactions,
+        };
+      }
+
+      // Pulled into their own consts (rather than read as `updated.toAccountId`
+      // inline below) so the guard clause above actually narrows them to
+      // non-undefined inside the closures passed to `.map()` below - TS
+      // doesn't carry a narrowed property access through a nested function.
+      const toAccountId = updated.toAccountId;
+      const toAccountType = updated.toAccountType;
+
+      const principalAmount = Math.min(updated.amount, finalAmount);
+      const gain = Math.max(0, finalAmount - updated.amount);
+
+      const principalCategory = s.categories.find(
+        (c) => c.type === 'others-in' && c.name === 'Investment (In)',
+      );
+      transactions = existingPrincipalTx
+        ? transactions.map((t) =>
+            t.id === existingPrincipalTx.id
+              ? {
+                  ...t,
+                  date: completionDate,
+                  amount: principalAmount,
+                  accountType: toAccountType,
+                  accountId: toAccountId,
+                }
+              : t,
+          )
+        : [
+            ...transactions,
+            {
+              id: generateId(),
+              investmentId: id,
+              date: completionDate,
+              amount: principalAmount,
+              type: 'others-in',
+              accountType: toAccountType,
+              accountId: toAccountId,
+              categoryId: principalCategory?.id,
+              notes: `Investment completed - principal - ${updated.name}`,
+            },
+          ];
+
+      const gainCategory = s.categories.find(
+        (c) => c.type === 'income' && c.name === 'Investment Profit',
+      );
+      if (gain > 0) {
+        transactions = existingGainTx
+          ? transactions.map((t) =>
+              t.id === existingGainTx.id
+                ? {
+                    ...t,
+                    date: completionDate,
+                    amount: gain,
+                    accountType: toAccountType,
+                    accountId: toAccountId,
+                  }
+                : t,
+            )
+          : [
+              ...transactions,
+              {
+                id: generateId(),
+                investmentId: id,
+                date: completionDate,
+                amount: gain,
+                type: 'income',
+                accountType: toAccountType,
+                accountId: toAccountId,
+                categoryId: gainCategory?.id,
+                notes: `Investment completed - gain - ${updated.name}`,
+              },
+            ];
+      } else if (existingGainTx) {
+        // Broke even or a loss - drop any stale gain transaction from a
+        // previous completion attempt with a higher final amount.
+        transactions = transactions.filter((t) => t.id !== existingGainTx.id);
+      }
+
+      return {
+        ...s,
+        investments: s.investments.map((i) => (i.id === id ? updated : i)),
+        transactions,
+      };
+    });
+  }
+
+  /** Deleting an investment record also removes whatever transaction(s) it
+   * auto-generated (opening and/or completion) - same cascade as
+   * `removeFixedDeposit`. */
+  removeInvestment(id: string): void {
+    this.updateState((s) => ({
+      ...s,
+      investments: s.investments.filter((i) => i.id !== id),
+      transactions: s.transactions.filter((t) => t.investmentId !== id),
     }));
   }
 

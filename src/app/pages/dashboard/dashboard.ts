@@ -35,6 +35,7 @@ interface MonthFlow {
   label: string;
   income: number;
   expense: number;
+  commitment: number;
 }
 
 /** How many months of history the Cash Flow chart shows by default - the
@@ -98,21 +99,35 @@ export class DashboardPage {
     return CURRENCIES.find((c) => c.value === currency)?.symbol ?? '';
   });
 
-  /** Income/expense/net for the real current calendar month - a fixed,
-   * glanceable "how am I doing right now", separate from the Transactions
-   * page's own navigable month filter. */
+  /** Income/expense/commitment/net for the real current calendar month - a
+   * fixed, glanceable "how am I doing right now", separate from the
+   * Transactions page's own navigable month filter. Commitment (fixed,
+   * recurring obligations - see `TransactionType`) is broken out from
+   * Expense but still reduces `net` the same way, since it's still money
+   * that's gone.
+   *
+   * Deliberately does NOT fold in Fixed Deposit principal movement:
+   * `StateService.netWorth` now counts an active FD's principal as part of
+   * your total wealth (see `activeFixedDepositTotal`), so placing or
+   * maturing one just moves money between "in an account" and "locked in
+   * an FD" - it doesn't gain or lose you anything, and shouldn't move this
+   * figure either. Only the FD's actual interest/gains should - and that
+   * already flows through `income` as normal, since `updateFixedDeposit`
+   * books it as a plain "income" transaction. */
   readonly monthlyStats = computed(() => {
     const s = this.state.state();
-    if (!s) return { income: 0, expense: 0, net: 0 };
+    if (!s) return { income: 0, expense: 0, commitment: 0, net: 0 };
     const monthKey = monthKeyOf();
     let income = 0;
     let expense = 0;
+    let commitment = 0;
     for (const t of s.transactions) {
       if (t.date.slice(0, 7) !== monthKey) continue;
       if (t.type === 'income') income += t.amount;
       else if (t.type === 'expense') expense += t.amount;
+      else if (t.type === 'commitment') commitment += t.amount;
     }
-    return { income, expense, net: income - expense };
+    return { income, expense, commitment, net: income - expense - commitment };
   });
 
   readonly netWorthDeltaPositive = computed(() => this.monthlyStats().net >= 0);
@@ -154,7 +169,11 @@ export class DashboardPage {
 
   /** Expenses grouped by category for the selected `categoryPeriod`, sorted
    * largest first, with anything past the top few folded into a single
-   * "Other" slice - the classic "where did my money go" dashboard widget. */
+   * "Other" slice - the classic "where did my money go" dashboard widget.
+   * Deliberately `type: 'expense'` only, not Commitment too - this widget is
+   * about discretionary/variable spending; fixed commitments have their own
+   * breakdown on the Financial Report ("Fixed Commitments Analysis") rather
+   * than being mixed in here. */
   readonly categoryBreakdown = computed<{ items: CategorySlice[]; total: number }>(() => {
     const s = this.state.state();
     if (!s) return { items: [], total: 0 };
@@ -216,28 +235,31 @@ export class DashboardPage {
     });
   });
 
-  /** Income vs. expense for each of the last `cashFlowRange()` months (this
-   * one included), oldest first, plus the largest single bar value so the
-   * template can scale every bar to the same axis. Always returns exactly
-   * `cashFlowRange()` entries, even for months with no activity, so the
-   * chart's x-axis is stable rather than shrinking when recent months are
-   * quiet. */
+  /** Income vs. expense vs. commitment for each of the last `cashFlowRange()`
+   * months (this one included), oldest first, plus the largest single bar
+   * value so the template can scale every bar to the same axis. Always
+   * returns exactly `cashFlowRange()` entries, even for months with no
+   * activity, so the chart's x-axis is stable rather than shrinking when
+   * recent months are quiet. A three-series chart - Commitment gets its own
+   * bar/color alongside Income and Expense, same breakdown as the stats-bar
+   * and `monthlyStats()` above. */
   readonly cashFlowTrend = computed<{ months: MonthFlow[]; max: number }>(() => {
     const s = this.state.state();
     const now = new Date();
-    const buckets = new Map<string, { income: number; expense: number }>();
+    const buckets = new Map<string, { income: number; expense: number; commitment: number }>();
     const keys: string[] = [];
     for (let i = this.cashFlowRange() - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = monthKeyOf(d);
       keys.push(key);
-      buckets.set(key, { income: 0, expense: 0 });
+      buckets.set(key, { income: 0, expense: 0, commitment: 0 });
     }
     for (const t of s?.transactions ?? []) {
       const bucket = buckets.get(t.date.slice(0, 7));
       if (!bucket) continue;
       if (t.type === 'income') bucket.income += t.amount;
       else if (t.type === 'expense') bucket.expense += t.amount;
+      else if (t.type === 'commitment') bucket.commitment += t.amount;
     }
     // Wider ranges (12M) can span a Jan 1 boundary, where "Oct … Jan …
     // Sep" reads as one ambiguous year - show the year on the first bar
@@ -252,14 +274,14 @@ export class DashboardPage {
       prevYear = year;
       const month = date.toLocaleDateString(undefined, { month: 'short' });
       const label = showYear ? `${month} '${String(year).slice(-2)}` : month;
-      return { key, label, income: b.income, expense: b.expense };
+      return { key, label, income: b.income, expense: b.expense, commitment: b.commitment };
     });
-    const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense]));
+    const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense, m.commitment]));
     return { months, max };
   });
 
   readonly hasCashFlowActivity = computed(() =>
-    this.cashFlowTrend().months.some((m) => m.income > 0 || m.expense > 0),
+    this.cashFlowTrend().months.some((m) => m.income > 0 || m.expense > 0 || m.commitment > 0),
   );
 
   /** Active fixed deposits: total principal locked away, plus whichever

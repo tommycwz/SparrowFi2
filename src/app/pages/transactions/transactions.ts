@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
-import { AccountType, CURRENCIES, Transaction, TransactionType } from '../../core/models';
+import { AccountType, CURRENCIES, TRANSACTION_TYPE_LABELS, Transaction, TransactionType } from '../../core/models';
 import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
@@ -43,24 +43,22 @@ function currentTimeString(): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-const TYPE_LABELS: Record<TransactionType, string> = {
-  income: 'Income',
-  expense: 'Expense',
-  'others-in': 'Others (In)',
-  'others-out': 'Others (Out)',
-};
+const TYPE_LABELS = TRANSACTION_TYPE_LABELS;
 
 /** One distinct accent color per transaction type - reusing the app's
- * existing design tokens rather than inventing new ones - so the four
+ * existing design tokens rather than inventing new ones - so the five
  * options in the Type picker are told apart at a glance instead of all
  * looking the same until read. Income/expense keep the green/red
  * convention used everywhere else in the app (positive/negative amounts);
- * the two "Others" variants get their own accent/warning hues rather than
- * reusing green/red, since collapsing them onto the same colors as
- * Income/Expense would defeat the point of telling all four apart. */
+ * Commitment gets its own violet token (still an outflow, but tracked
+ * separately from day-to-day Expense - see `TransactionType`); the two
+ * "Others" variants get their own accent/warning hues rather than reusing
+ * green/red, since collapsing them onto the same colors as Income/Expense
+ * would defeat the point of telling all five apart. */
 const TYPE_COLORS: Record<TransactionType, string> = {
   income: 'var(--success)',
   expense: 'var(--danger)',
+  commitment: 'var(--commitment)',
   'others-in': 'var(--accent)',
   'others-out': 'var(--warning)',
 };
@@ -166,16 +164,18 @@ export class TransactionsPage {
   readonly importPreview = signal<ImportPreview | null>(null);
 
   readonly typeLabels = TYPE_LABELS;
-  readonly typeOptions: TransactionType[] = ['income', 'expense', 'others-in', 'others-out'];
+  readonly typeOptions: TransactionType[] = ['income', 'expense', 'commitment', 'others-in', 'others-out'];
 
   private touchStartX = 0;
   private touchStartY = 0;
 
   constructor(readonly state: StateService) {}
 
-  readonly categoriesForType = computed(() =>
-    (this.state.state()?.categories ?? []).filter((c) => c.type === this.form().type),
-  );
+  /** Categories offered for the form's current type. */
+  readonly categoriesForType = computed(() => {
+    const type = this.form().type;
+    return (this.state.state()?.categories ?? []).filter((c) => c.type === type);
+  });
 
   readonly accountOptions = computed(() => {
     const s = this.state.state();
@@ -234,15 +234,19 @@ export class TransactionsPage {
   });
 
   /** Summary stats for whatever is currently visible in `transactions()`,
-   * so the numbers at the top always match the list below them. */
+   * so the numbers at the top always match the list below them. Commitment
+   * spending is broken out from Expense (see `TransactionType`) but still
+   * reduces Net Balance the same way - it's still money that's gone. */
   readonly monthlyStats = computed(() => {
     let income = 0;
     let expense = 0;
+    let commitment = 0;
     for (const t of this.transactions()) {
       if (t.type === 'income') income += t.amount;
       else if (t.type === 'expense') expense += t.amount;
+      else if (t.type === 'commitment') commitment += t.amount;
     }
-    return { income, expense, net: income - expense };
+    return { income, expense, commitment, net: income - expense - commitment };
   });
 
   readonly statsPeriodLabel = computed(() => (this.selectedMonth() === 'all' ? 'All-Time' : 'Monthly'));

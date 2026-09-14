@@ -1,5 +1,16 @@
 import { generateId } from './id.util';
-import { AppState, Bank, Card, Category, Currency, FixedDeposit, Wallet, createEmptyState } from './models';
+import { ensureRequiredCategories } from './default-categories';
+import {
+  AppState,
+  Bank,
+  Card,
+  Category,
+  Currency,
+  FixedDeposit,
+  Investment,
+  Wallet,
+  createEmptyState,
+} from './models';
 
 /**
  * Normalizes a raw, decoded JSON payload (any historical shape) into the
@@ -42,6 +53,9 @@ export function migrateState(raw: unknown): AppState {
     fixedDeposits: Array.isArray(src.fixedDeposits)
       ? src.fixedDeposits.map(normalizeFixedDeposit)
       : [],
+    // Investments didn't exist in any legacy file format, so there's
+    // nothing to migrate - just make sure the field is always an array.
+    investments: Array.isArray(src.investments) ? src.investments.map(normalizeInvestment) : [],
   };
 
   // Legacy `creditCards[]` -> `cards[]`.
@@ -65,8 +79,20 @@ export function migrateState(raw: unknown): AppState {
     }
   }
 
+  // Top up the migrated file's categories with any locked default it's
+  // missing (see `ensureRequiredCategories`) *before* looking one up below -
+  // a legacy file predating a given locked category would otherwise never
+  // get it until the next `StateService.load()`.
+  state.categories = ensureRequiredCategories(state.categories);
+
   // Non-zero initialCapital on banks/wallets becomes an opening-balance
-  // transaction, then the field is zeroed to prevent double-counting.
+  // transaction, then the field is zeroed to prevent double-counting -
+  // categorized as "Adjustment (In)" when the migrated file's own
+  // categories happen to include that locked default (see
+  // `Category.locked`), same as `StateService.addBank`/`addWallet`.
+  const adjustmentInCategory = state.categories.find(
+    (c) => c.type === 'others-in' && c.name === 'Adjustment (In)',
+  );
   for (const bank of state.banks) {
     if (bank.initialCapital && bank.initialCapital !== 0) {
       state.transactions.push({
@@ -76,6 +102,7 @@ export function migrateState(raw: unknown): AppState {
         type: 'others-in',
         accountType: 'bank',
         accountId: bank.id,
+        categoryId: adjustmentInCategory?.id,
         notes: 'Initial balance',
       });
       bank.initialCapital = 0;
@@ -90,6 +117,7 @@ export function migrateState(raw: unknown): AppState {
         type: 'others-in',
         accountType: 'wallet',
         accountId: wallet.id,
+        categoryId: adjustmentInCategory?.id,
         notes: 'Initial balance',
       });
       wallet.initialCapital = 0;
@@ -153,5 +181,23 @@ function normalizeFixedDeposit(fd: any): FixedDeposit {
     percentage: typeof fd.percentage === 'number' ? fd.percentage : 0,
     months: typeof fd.months === 'number' ? fd.months : 12,
     status: fd.status ?? (fd.isMatured ? 'matured' : 'active'),
+    remarks: fd.remarks,
+  };
+}
+
+function normalizeInvestment(inv: any): Investment {
+  return {
+    id: inv.id ?? generateId(),
+    name: inv.name ?? 'Investment',
+    fromAccountId: inv.fromAccountId,
+    fromAccountType: inv.fromAccountType,
+    toAccountId: inv.toAccountId,
+    toAccountType: inv.toAccountType,
+    amount: typeof inv.amount === 'number' ? inv.amount : 0,
+    date: inv.date ?? new Date().toISOString().slice(0, 10),
+    status: inv.status ?? 'active',
+    completionDate: inv.completionDate,
+    finalAmount: typeof inv.finalAmount === 'number' ? inv.finalAmount : undefined,
+    remarks: inv.remarks,
   };
 }

@@ -13,7 +13,7 @@ describe('migrateState', () => {
     expect(result.categories.some((c) => c.id === 'cat1' && c.name === 'Food')).toBe(true);
   });
 
-  it('converts non-zero bank initialCapital into an opening-balance transaction and zeroes it', () => {
+  it('converts non-zero bank initialCapital into an opening-balance transaction and zeroes it, categorized as the auto-backfilled "Adjustment (In)"', () => {
     const result = migrateState({
       banks: [{ id: 'b1', name: 'Maybank', initialCapital: 500, color: '#000' }],
     });
@@ -22,6 +22,35 @@ describe('migrateState', () => {
     const tx = result.transactions.find((t) => t.accountId === 'b1');
     expect(tx?.amount).toBe(500);
     expect(tx?.notes).toBe('Initial balance');
+    // This legacy file has no categories at all, but `ensureRequiredCategories`
+    // backfills the locked defaults (including "Adjustment (In)") before this
+    // transaction is categorized - so it's no longer left uncategorized the
+    // way a truly unmigrated file would have been.
+    const adjustmentIn = result.categories.find((c) => c.name === 'Adjustment (In)' && c.type === 'others-in');
+    expect(adjustmentIn).toBeDefined();
+    expect(tx?.categoryId).toBe(adjustmentIn!.id);
+  });
+
+  it('categorizes the opening transaction as "Adjustment (In)" when the legacy file already has that category, reusing it rather than adding a second one', () => {
+    const result = migrateState({
+      banks: [{ id: 'b1', name: 'Maybank', initialCapital: 500, color: '#000' }],
+      categories: [{ id: 'cat-adj-in', name: 'Adjustment (In)', type: 'others-in', color: '#06B6D4' }],
+    });
+    const tx = result.transactions.find((t) => t.accountId === 'b1');
+    expect(tx?.categoryId).toBe('cat-adj-in');
+    expect(result.categories.filter((c) => c.name === 'Adjustment (In)').length).toBe(1);
+  });
+
+  it('backfills the locked "Investment ..." categories onto a legacy file that never had them', () => {
+    const result = migrateState({ banks: [{ id: 'b1', name: 'Maybank', color: '#000' }] });
+    const locked = result.categories.filter((c) => c.locked).map((c) => c.name).sort();
+    expect(locked).toEqual([
+      'Adjustment (In)',
+      'Adjustment (Out)',
+      'Investment (In)',
+      'Investment (Out)',
+      'Investment Profit',
+    ]);
   });
 
   it('migrates fixedDeposit.isMatured boolean into a status enum', () => {

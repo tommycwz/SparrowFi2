@@ -71,6 +71,10 @@
       <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(totals().income) }}</div>
     </div>
     <div class="stat">
+      <div class="stat-label muted">Total Commitments</div>
+      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(totals().commitment) }}</div>
+    </div>
+    <div class="stat">
       <div class="stat-label muted">Total Expenses</div>
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(totals().expense) }}</div>
     </div>
@@ -126,22 +130,72 @@
       </div>
     }
 
+    <section>
+      <div class="section-head">
+        <h2>Income Analysis</h2>
+      </div>
+      @if (incomeAnalysis().items.length === 0) {
+        <div class="empty-state card">
+          <sf-icon name="tag" [size]="28" />
+          <p>No income recorded in this period.</p>
+        </div>
+      } @else {
+        <div class="card breakdown-card">
+          <div class="donut-wrap">
+            <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Income by category">
+              <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+              @for (seg of incomeDonutSegments(); track seg.id) {
+                <circle
+                  cx="21"
+                  cy="21"
+                  r="15.91549430919"
+                  fill="transparent"
+                  [attr.stroke]="seg.color"
+                  [attr.stroke-dasharray]="seg.dashArray"
+                  [attr.stroke-dashoffset]="seg.offset"
+                  class="donut-segment"
+                />
+              }
+            </svg>
+            <div class="donut-center">
+              <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(incomeAnalysis().total) }}</span>
+              <span class="donut-center-label muted">earned</span>
+            </div>
+          </div>
+          <div class="breakdown-list">
+            @for (c of incomeAnalysis().items; track c.id) {
+              <div class="breakdown-row">
+                <div class="breakdown-top">
+                  <span class="breakdown-dot" [style.background]="c.color"></span>
+                  <span class="breakdown-name">{{ c.name }}</span>
+                  <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+                </div>
+                <div class="breakdown-bar-track">
+                  <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </section>
+
     <div class="dash-grid">
       <section>
         <div class="section-head">
-          <h2>Income Analysis</h2>
+          <h2>Fixed Commitments Analysis</h2>
         </div>
-        @if (incomeAnalysis().items.length === 0) {
+        @if (commitmentAnalysis().items.length === 0) {
           <div class="empty-state card">
-            <sf-icon name="tag" [size]="28" />
-            <p>No income recorded in this period.</p>
+            <sf-icon name="layers" [size]="28" />
+            <p>No fixed commitments recorded in this period.</p>
           </div>
         } @else {
           <div class="card breakdown-card">
             <div class="donut-wrap">
-              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Income by category">
+              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Fixed commitments by category">
                 <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-                @for (seg of incomeDonutSegments(); track seg.id) {
+                @for (seg of commitmentDonutSegments(); track seg.id) {
                   <circle
                     cx="21"
                     cy="21"
@@ -155,12 +209,12 @@
                 }
               </svg>
               <div class="donut-center">
-                <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(incomeAnalysis().total) }}</span>
-                <span class="donut-center-label muted">earned</span>
+                <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(commitmentAnalysis().total) }}</span>
+                <span class="donut-center-label muted">committed</span>
               </div>
             </div>
             <div class="breakdown-list">
-              @for (c of incomeAnalysis().items; track c.id) {
+              @for (c of commitmentAnalysis().items; track c.id) {
                 <div class="breakdown-row">
                   <div class="breakdown-top">
                     <span class="breakdown-dot" [style.background]="c.color"></span>
@@ -179,17 +233,17 @@
 
       <section>
         <div class="section-head">
-          <h2>Expenses Analysis</h2>
+          <h2>Variable Expenses Analysis</h2>
         </div>
         @if (expenseAnalysis().items.length === 0) {
           <div class="empty-state card">
             <sf-icon name="tag" [size]="28" />
-            <p>No expenses recorded in this period.</p>
+            <p>No variable expenses recorded in this period.</p>
           </div>
         } @else {
           <div class="card breakdown-card">
             <div class="donut-wrap">
-              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Expenses by category">
+              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Variable expenses by category">
                 <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
                 @for (seg of expenseDonutSegments(); track seg.id) {
                   <circle
@@ -349,45 +403,70 @@
         }
       </section>
     </div>
-
-    <section>
-      <div class="section-head">
-        <h2>Summary</h2>
-      </div>
-      <div class="card stack summary-card">
-        <div class="kv">
-          <span class="muted">Transactions</span><span>{{ summary().count }}</span>
-        </div>
-        <div class="kv">
-          <span class="muted">Average per Transaction</span><span>{{ money(summary().avgTransaction) }}</span>
-        </div>
-        <div class="kv">
-          <span class="muted">Savings Rate</span>
-          <span [class.positive]="summary().savingsRate >= 0" [class.negative]="summary().savingsRate < 0">
-            {{ summary().savingsRate >= 0 ? '' : '-' }}{{ numberPart(summary().savingsRate < 0 ? -summary().savingsRate : summary().savingsRate) }}%
-          </span>
-        </div>
-        @if (summary().topIncome; as top) {
-          <div class="kv">
-            <span class="muted">Top Income Category</span>
-            <span><span class="breakdown-dot" [style.background]="top.color"></span> {{ top.name }} - {{ money(top.amount) }}</span>
-          </div>
-        }
-        @if (summary().topExpense; as top) {
-          <div class="kv">
-            <span class="muted">Top Expense Category</span>
-            <span><span class="breakdown-dot" [style.background]="top.color"></span> {{ top.name }} - {{ money(top.amount) }}</span>
-          </div>
-        }
-        @if (totals().othersIn > 0 || totals().othersOut > 0) {
-          <div class="kv">
-            <span class="muted">Transfers &amp; Adjustments</span>
-            <span>+{{ money(totals().othersIn) }} / -{{ money(totals().othersOut) }}</span>
-          </div>
-        }
-      </div>
-    </section>
   }
+
+  <section>
+    <div class="section-head">
+      <h2>Investments</h2>
+      <div class="cash-flow-legend">
+        <span class="legend-item"><span class="legend-dot invested"></span>Invested</span>
+        <span class="legend-item"><span class="legend-dot gain"></span>Gain</span>
+        <span class="legend-item"><span class="legend-dot loss"></span>Loss</span>
+      </div>
+    </div>
+
+    @if (investmentBreakdown().bars.length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="trending-up" [size]="28" />
+        <p>No investments recorded yet.</p>
+      </div>
+    } @else {
+      <div class="card investment-chart-card">
+        <div class="investment-chart">
+          @for (b of investmentBreakdown().bars; track b.id) {
+            <div class="investment-col">
+              <div class="investment-bars">
+                <div
+                  class="investment-bar-track"
+                  [style.height.%]="barHeightPercent(b.total, investmentBreakdown().max)"
+                >
+                  @if (b.gain > 0) {
+                    <div
+                      class="investment-bar-segment gain"
+                      [style.height.%]="(b.gain / b.total) * 100"
+                    ></div>
+                  }
+                  @if (b.loss > 0) {
+                    <div
+                      class="investment-bar-segment loss"
+                      [style.height.%]="(b.loss / b.total) * 100"
+                    ></div>
+                  }
+                  <div
+                    class="investment-bar-segment base"
+                    [style.height.%]="(b.baseAmount / b.total) * 100"
+                  ></div>
+                </div>
+              </div>
+              <span class="investment-label muted" [title]="b.name">{{ b.name }}</span>
+              <span class="investment-amount muted small" [title]="'Invested ' + money(b.amount)">
+                {{ money(b.amount) }}
+              </span>
+              @if (b.gain > 0 || b.loss > 0) {
+                <span
+                  class="investment-sub small"
+                  [class.positive]="b.gain > 0"
+                  [class.negative]="b.loss > 0"
+                >
+                  {{ b.gain > 0 ? '+' : '-' }}{{ money(b.gain > 0 ? b.gain : b.loss) }}
+                </span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
 
   <section>
     <div class="section-head">

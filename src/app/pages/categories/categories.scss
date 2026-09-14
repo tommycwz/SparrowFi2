@@ -2,11 +2,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .page-head h1 {
   font-size: 1.3rem;
   font-weight: 800;
+}
+
+.head-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .segmented {
@@ -67,6 +75,21 @@
 .name {
   flex: 1;
   font-weight: 600;
+}
+
+/* Shown in place of the delete button for a `locked` category (see
+   `Category.locked`) - makes clear the delete button is intentionally
+   missing because Fixed Deposits relies on this category, not a bug. */
+.badge-locked {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .icon-btn {

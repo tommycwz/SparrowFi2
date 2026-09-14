@@ -1,24 +1,19 @@
 <div class="stack">
   <div class="page-head">
     <h1>Categories</h1>
-    <button type="button" class="btn btn-primary" (click)="openAdd()">
-      <sf-icon name="plus" [size]="16" /> Add
-    </button>
+    <div class="head-actions">
+      <button type="button" class="btn btn-primary" (click)="openAdd()">
+        <sf-icon name="plus" [size]="16" /> Add
+      </button>
+    </div>
   </div>
 
   <div class="segmented">
-    <button type="button" [class.active]="tab() === 'expense'" (click)="tab.set('expense')">
-      Expense <span class="count">{{ tabCounts().expense }}</span>
-    </button>
-    <button type="button" [class.active]="tab() === 'income'" (click)="tab.set('income')">
-      Income <span class="count">{{ tabCounts().income }}</span>
-    </button>
-    <button type="button" [class.active]="tab() === 'others-in'" (click)="tab.set('others-in')">
-      Others In <span class="count">{{ tabCounts()['others-in'] }}</span>
-    </button>
-    <button type="button" [class.active]="tab() === 'others-out'" (click)="tab.set('others-out')">
-      Others Out <span class="count">{{ tabCounts()['others-out'] }}</span>
-    </button>
+    @for (t of tabs; track t) {
+      <button type="button" [class.active]="tab() === t" (click)="tab.set(t)">
+        {{ typeLabel(t) }} <span class="count">{{ tabCounts()[t] }}</span>
+      </button>
+    }
   </div>
 
   @if (categories().length === 0) {
@@ -32,9 +27,13 @@
         <div class="card row" (click)="openEdit(c)">
           <div class="dot" [style.background]="c.color"></div>
           <div class="name">{{ c.name }}</div>
-          <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(c.id)" aria-label="Delete">
-            <sf-icon name="trash" [size]="16" />
-          </button>
+          @if (c.locked) {
+            <span class="badge-locked" title="Used by Fixed Deposits and Investments - can't be deleted">Locked</span>
+          } @else {
+            <button type="button" class="icon-btn" (click)="$event.stopPropagation(); remove(c.id)" aria-label="Delete">
+              <sf-icon name="trash" [size]="16" />
+            </button>
+          }
         </div>
       }
     </div>
@@ -53,6 +52,7 @@
         <select [ngModel]="type()" (ngModelChange)="type.set($event)">
           <option value="income">Income</option>
           <option value="expense">Expense</option>
+          <option value="commitment">Commitment</option>
           <option value="others-in">Others (In)</option>
           <option value="others-out">Others (Out)</option>
         </select>

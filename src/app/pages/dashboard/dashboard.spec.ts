@@ -60,6 +60,66 @@ describe('DashboardPage charts', () => {
     });
   });
 
+  describe('monthlyStats commitment handling', () => {
+    it('breaks Commitment out from Expense, but still subtracts it from Net This Month', () => {
+      state.addTransaction({ date: TODAY, amount: 5000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 800, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 1200, type: 'commitment', accountType: 'cash' });
+
+      const stats = page.monthlyStats();
+      expect(stats.expense).toBe(800);
+      expect(stats.commitment).toBe(1200);
+      expect(stats.net).toBe(5000 - 800 - 1200);
+    });
+  });
+
+  describe('monthlyStats Fixed Deposit neutrality', () => {
+    it('does not move Net This Month when a new FD is placed - it is now counted in Net Worth instead', () => {
+      state.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 0 });
+      const bankId = state.state()!.banks[0].id;
+      state.addTransaction({ date: TODAY, amount: 5000, type: 'income', accountType: 'cash' });
+      // Placing a new FD - StateService books this as an fdId-linked "others-out".
+      state.addTransaction({
+        date: TODAY,
+        amount: 2000,
+        type: 'others-out',
+        accountType: 'bank',
+        accountId: bankId,
+        fdId: 'fd-1',
+      });
+
+      expect(page.monthlyStats().net).toBe(5000);
+    });
+
+    it('does not move Net This Month when an FD matures - only its interest (income) does', () => {
+      state.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 0 });
+      const bankId = state.state()!.banks[0].id;
+      state.addTransaction({ date: TODAY, amount: 5000, type: 'income', accountType: 'cash' });
+      // An FD maturing this month - StateService books its principal back
+      // as an fdId-linked "others-in" (neutral) and its interest as a
+      // plain "income" transaction (which should count as normal).
+      state.addTransaction({
+        date: TODAY,
+        amount: 1000,
+        type: 'others-in',
+        accountType: 'bank',
+        accountId: bankId,
+        fdId: 'fd-2',
+      });
+      state.addTransaction({ date: TODAY, amount: 50, type: 'income', accountType: 'bank', accountId: bankId });
+
+      expect(page.monthlyStats().net).toBe(5000 + 50);
+    });
+
+    it('does not fold a plain (non-FD) others-in/others-out transfer into Net This Month either', () => {
+      state.addTransaction({ date: TODAY, amount: 5000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 800, type: 'others-out', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 300, type: 'others-in', accountType: 'cash' });
+
+      expect(page.monthlyStats().net).toBe(5000);
+    });
+  });
+
   describe('categoryDonutSegments', () => {
     it('turns this month’s category breakdown into stacked donut arcs summing to a full ring', () => {
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
@@ -159,19 +219,27 @@ describe('DashboardPage charts', () => {
       expect(trend.months[5].key).toBe(monthKeyOf());
     });
 
-    it('buckets income and expense transactions into the current month and sets max', () => {
+    it('buckets income, expense, and commitment transactions into the current month and sets max', () => {
       state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
       state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 650, type: 'commitment', accountType: 'cash' });
       // others-in/others-out (e.g. fixed deposit transactions) shouldn't
-      // count as cash flow - only real income/expense should.
+      // count as cash flow - only real income/expense/commitment should.
       state.addTransaction({ date: TODAY, amount: 9000, type: 'others-in', accountType: 'cash' });
 
       const trend = page.cashFlowTrend();
       const current = trend.months[5];
       expect(current.income).toBe(500);
       expect(current.expense).toBe(200);
-      expect(trend.max).toBe(500);
+      expect(current.commitment).toBe(650);
+      expect(trend.max).toBe(650);
       expect(page.hasCashFlowActivity()).toBe(true);
+    });
+
+    it('reports activity when only commitments are recorded, with no income or expense', () => {
+      state.addTransaction({ date: TODAY, amount: 400, type: 'commitment', accountType: 'cash' });
+      expect(page.hasCashFlowActivity()).toBe(true);
+      expect(page.cashFlowTrend().max).toBe(400);
     });
 
     it('reports no activity when the last 6 months are empty', () => {
@@ -235,9 +303,10 @@ describe('DashboardPage charts', () => {
       expect(segment.getAttribute('stroke-dasharray')).toBe('100 0');
     });
 
-    it('renders 6 cash-flow columns with bars scaled by inline height', () => {
+    it('renders 6 cash-flow columns with bars scaled by inline height, including a commitment bar', () => {
       state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
       state.addTransaction({ date: TODAY, amount: 250, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 125, type: 'commitment', accountType: 'cash' });
       fixture.detectChanges();
 
       const el = fixture.nativeElement as HTMLElement;
@@ -247,8 +316,18 @@ describe('DashboardPage charts', () => {
       const lastCol = cols[5];
       const incomeBar = lastCol.querySelector('.cash-flow-bar.income') as HTMLElement;
       const expenseBar = lastCol.querySelector('.cash-flow-bar.expense') as HTMLElement;
+      const commitmentBar = lastCol.querySelector('.cash-flow-bar.commitment') as HTMLElement;
       expect(incomeBar.style.height).toBe('100%');
       expect(expenseBar.style.height).toBe('50%');
+      expect(commitmentBar.style.height).toBe('25%');
+    });
+
+    it('shows a Commitment entry in the Cash Flow legend', () => {
+      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.legend-dot.commitment')).not.toBeNull();
+      expect(el.textContent).toContain('Commitment');
     });
 
     it('colors the Net This Month stat green when positive and red when negative', () => {
@@ -257,7 +336,7 @@ describe('DashboardPage charts', () => {
       fixture.detectChanges();
 
       const stats = fixture.nativeElement.querySelectorAll('.stat .stat-value');
-      const netEl = stats[2] as HTMLElement; // Monthly Income, Monthly Expense, Net This Month
+      const netEl = stats[3] as HTMLElement; // Monthly Income, Monthly Expense, Monthly Commitment, Net This Month
       expect(netEl.classList.contains('negative')).toBe(true);
       expect(netEl.classList.contains('positive')).toBe(false);
 
@@ -271,7 +350,7 @@ describe('DashboardPage charts', () => {
       fixture.detectChanges();
       const el = fixture.nativeElement as HTMLElement;
       expect(el.querySelector('.cash-flow-chart')).toBeNull();
-      expect(el.textContent).toContain('No income or expenses');
+      expect(el.textContent).toContain('No income, expenses, or commitments');
     });
 
     it("shows the specific bank's own color next to its name in Recent Transactions", () => {

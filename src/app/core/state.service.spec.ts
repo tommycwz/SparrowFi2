@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { StateService } from './state.service';
 import { createEmptyState } from './models';
-import { fdMaturityValue } from './fixed-deposit.util';
+import { fdGainValue, fdMaturityValue } from './fixed-deposit.util';
 
 describe('StateService fixed deposit <-> transaction linking', () => {
   let service: StateService;
@@ -38,7 +38,32 @@ describe('StateService fixed deposit <-> transaction linking', () => {
     expect(linked[0].date).toBe('2026-01-01');
   });
 
-  it('records an others-in maturity transaction, to toBankId, exactly once when marked matured', () => {
+  it('categorizes the placement/maturity/gain transactions using the shared "Investment (Out)", "Investment (In)", and "Investment Profit" locked categories when present', () => {
+    service.addCategory({ name: 'Investment (Out)', color: '#4338CA', type: 'others-out', locked: true });
+    service.addCategory({ name: 'Investment (In)', color: '#0369A1', type: 'others-in', locked: true });
+    service.addCategory({ name: 'Investment Profit', color: '#10B981', type: 'income', locked: true });
+    const [fdPlacement, fdMaturityWithdrawal, fdGain] = service.state()!.categories;
+
+    service.addFixedDeposit({
+      bankId: bankId('Main Bank'),
+      startDate: '2026-01-01',
+      amount: 1000,
+      percentage: 12,
+      months: 12,
+      status: 'active',
+    });
+    const fd = service.state()!.fixedDeposits[0];
+    const opening = service.state()!.transactions.find((t) => t.fdId === fd.id)!;
+    expect(opening.categoryId).toBe(fdPlacement.id);
+
+    service.updateFixedDeposit(fd.id, { status: 'matured' });
+    const principalTx = service.state()!.transactions.find((t) => t.fdId === fd.id && t.type === 'others-in')!;
+    const gainTx = service.state()!.transactions.find((t) => t.fdId === fd.id && t.type === 'income')!;
+    expect(principalTx.categoryId).toBe(fdMaturityWithdrawal.id);
+    expect(gainTx.categoryId).toBe(fdGain.id);
+  });
+
+  it('splits maturity into a principal (others-in) and a gains (income) transaction, to toBankId, exactly once when marked matured', () => {
     service.addFixedDeposit({
       bankId: bankId('Main Bank'),
       toBankId: bankId('Other Bank'),
@@ -51,15 +76,49 @@ describe('StateService fixed deposit <-> transaction linking', () => {
     const fd = service.state()!.fixedDeposits[0];
 
     service.updateFixedDeposit(fd.id, { status: 'matured' });
-    let maturityTx = service.state()!.transactions.filter((t) => t.fdId === fd.id && t.type === 'others-in');
-    expect(maturityTx.length).toBe(1);
-    expect(maturityTx[0].accountId).toBe(bankId('Other Bank'));
-    expect(maturityTx[0].amount).toBeCloseTo(fdMaturityValue({ ...fd, status: 'matured' }));
+    const matured = { ...fd, status: 'matured' as const };
+    let principalTx = service.state()!.transactions.filter((t) => t.fdId === fd.id && t.type === 'others-in');
+    let gainTx = service.state()!.transactions.filter((t) => t.fdId === fd.id && t.type === 'income');
+    expect(principalTx.length).toBe(1);
+    expect(gainTx.length).toBe(1);
+    expect(principalTx[0].accountId).toBe(bankId('Other Bank'));
+    expect(principalTx[0].amount).toBe(1000);
+    expect(gainTx[0].accountId).toBe(bankId('Other Bank'));
+    expect(gainTx[0].amount).toBeCloseTo(fdGainValue(matured));
+    // The two together still add up to the full payout.
+    expect(principalTx[0].amount + gainTx[0].amount).toBeCloseTo(fdMaturityValue(matured));
 
-    // Marking matured again (e.g. a stray double-call) must not duplicate it.
+    // Marking matured again (e.g. a stray double-call) must not duplicate either.
     service.updateFixedDeposit(fd.id, { status: 'matured' });
-    maturityTx = service.state()!.transactions.filter((t) => t.fdId === fd.id && t.type === 'others-in');
-    expect(maturityTx.length).toBe(1);
+    principalTx = service.state()!.transactions.filter((t) => t.fdId === fd.id && t.type === 'others-in');
+    gainTx = service.state()!.transactions.filter((t) => t.fdId === fd.id && t.type === 'income');
+    expect(principalTx.length).toBe(1);
+    expect(gainTx.length).toBe(1);
+  });
+
+  it('omits (and later drops) the gains transaction for a 0% fixed deposit', () => {
+    service.addFixedDeposit({
+      bankId: bankId('Main Bank'),
+      startDate: '2026-01-01',
+      amount: 1000,
+      percentage: 5,
+      months: 12,
+      status: 'active',
+    });
+    const fd = service.state()!.fixedDeposits[0];
+
+    service.updateFixedDeposit(fd.id, { status: 'matured' });
+    expect(
+      service.state()!.transactions.some((t) => t.fdId === fd.id && t.type === 'income'),
+    ).toBe(true);
+
+    // Editing the rate down to 0% after maturity should drop the now-stale gains transaction.
+    service.updateFixedDeposit(fd.id, { percentage: 0 });
+    expect(
+      service.state()!.transactions.some((t) => t.fdId === fd.id && t.type === 'income'),
+    ).toBe(false);
+    const principalTx = service.state()!.transactions.find((t) => t.fdId === fd.id && t.type === 'others-in')!;
+    expect(principalTx.amount).toBe(1000);
   });
 
   it('keeps the opening transaction in sync when the fixed deposit is edited', () => {
@@ -90,10 +149,488 @@ describe('StateService fixed deposit <-> transaction linking', () => {
     });
     const fd = service.state()!.fixedDeposits[0];
     service.updateFixedDeposit(fd.id, { status: 'matured' });
-    expect(service.state()!.transactions.filter((t) => t.fdId === fd.id).length).toBe(2);
+    // Opening (others-out) + principal returned (others-in) + gains (income).
+    expect(service.state()!.transactions.filter((t) => t.fdId === fd.id).length).toBe(3);
 
     service.removeFixedDeposit(fd.id);
     expect(service.state()!.transactions.filter((t) => t.fdId === fd.id).length).toBe(0);
+  });
+
+  it('a bank-less FD books no transactions at all, even once matured, and gains one once a bank is added', () => {
+    service.addFixedDeposit({
+      startDate: '2026-01-01',
+      amount: 1000,
+      percentage: 5,
+      months: 12,
+      status: 'active',
+    });
+    const fd = service.state()!.fixedDeposits[0];
+    expect(service.state()!.transactions.length).toBe(0);
+
+    service.updateFixedDeposit(fd.id, { status: 'matured' });
+    expect(service.state()!.transactions.filter((t) => t.fdId === fd.id).length).toBe(0);
+
+    // Adding a bank retroactively books both the opening transaction and -
+    // since this FD is already "matured" - the maturity payout too, all in
+    // one go.
+    service.updateFixedDeposit(fd.id, { bankId: bankId('Main Bank') });
+    expect(service.state()!.transactions.filter((t) => t.fdId === fd.id).length).toBe(3);
+  });
+});
+
+describe('StateService.netWorth with active fixed deposits', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 5000 });
+  });
+
+  function bankId(name: string): string {
+    return service.state()!.banks.find((b) => b.name === name)!.id;
+  }
+
+  it("counts an active FD's principal as part of Net Worth, so placing one doesn't make wealth disappear", () => {
+    const before = service.netWorth();
+    service.addFixedDeposit({
+      bankId: bankId('Main Bank'),
+      startDate: '2026-01-01',
+      amount: 2000,
+      percentage: 5,
+      months: 12,
+      status: 'active',
+    });
+
+    // The bank balance dropped by 2000 (opening "others-out"), but Net
+    // Worth is unchanged - the money is still yours, just locked in an FD.
+    expect(service.accountBalances().find((a) => a.id === bankId('Main Bank'))!.balance).toBe(3000);
+    expect(service.activeFixedDepositTotal()).toBe(2000);
+    expect(service.netWorth()).toBe(before);
+  });
+
+  it("excludes a matured FD's principal from activeFixedDepositTotal - it's already back in the account balance", () => {
+    service.addFixedDeposit({
+      bankId: bankId('Main Bank'),
+      startDate: '2026-01-01',
+      amount: 2000,
+      percentage: 5,
+      months: 12,
+      status: 'active',
+    });
+    const fd = service.state()!.fixedDeposits[0];
+    const before = service.netWorth();
+
+    service.updateFixedDeposit(fd.id, { status: 'matured' });
+
+    // No longer "active", so it drops out of activeFixedDepositTotal...
+    expect(service.activeFixedDepositTotal()).toBe(0);
+    // ...but Net Worth still only goes up by the interest earned (not
+    // double-counted with the principal, which is now back in the bank).
+    const gain = fdGainValue({ ...fd, status: 'matured' });
+    expect(service.netWorth()).toBeCloseTo(before + gain);
+  });
+
+  it('excludes a withdrawn FD the same way', () => {
+    service.addFixedDeposit({
+      bankId: bankId('Main Bank'),
+      startDate: '2026-01-01',
+      amount: 2000,
+      percentage: 0,
+      months: 12,
+      status: 'active',
+    });
+    const fd = service.state()!.fixedDeposits[0];
+    service.updateFixedDeposit(fd.id, { status: 'matured' });
+    service.updateFixedDeposit(fd.id, { status: 'withdrawn' });
+
+    expect(service.activeFixedDepositTotal()).toBe(0);
+  });
+
+  it('a bank-less FD counts toward Net Worth too - it never touched a tracked account, so it\'s disclosure, not double-counting', () => {
+    const before = service.netWorth();
+    service.addFixedDeposit({
+      startDate: '2026-01-01',
+      amount: 3000,
+      percentage: 5,
+      months: 12,
+      status: 'active',
+    });
+
+    expect(service.state()!.fixedDeposits.every((fd) => fd.bankId === undefined)).toBe(true);
+    expect(service.activeFixedDepositTotal()).toBe(3000);
+    expect(service.netWorth()).toBe(before + 3000);
+  });
+});
+
+describe('StateService investment <-> transaction linking', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 0 });
+    service.addBank({ name: 'Other Bank', color: '#3B82F6', initialCapital: 0 });
+  });
+
+  function bankId(name: string): string {
+    return service.state()!.banks.find((b) => b.name === name)!.id;
+  }
+
+  it('records an others-out transaction against the "from fund" when an investment is created', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+
+    const inv = service.state()!.investments[0];
+    const linked = service.state()!.transactions.filter((t) => t.investmentId === inv.id);
+    expect(linked.length).toBe(1);
+    expect(linked[0].type).toBe('others-out');
+    expect(linked[0].accountType).toBe('bank');
+    expect(linked[0].accountId).toBe(bankId('Main Bank'));
+    expect(linked[0].amount).toBe(1000);
+  });
+
+  it('records no opening transaction at all when no "from fund" is chosen', () => {
+    service.addInvestment({
+      name: 'Cash Deal',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+
+    const inv = service.state()!.investments[0];
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(0);
+  });
+
+  it('categorizes the opening/completion transactions using the locked Investment categories when present', () => {
+    service.addCategory({ name: 'Investment (Out)', color: '#4338CA', type: 'others-out', locked: true });
+    service.addCategory({ name: 'Investment (In)', color: '#0369A1', type: 'others-in', locked: true });
+    service.addCategory({ name: 'Investment Profit', color: '#10B981', type: 'income', locked: true });
+    const [invOut, invIn, invGain] = service.state()!.categories;
+
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    const opening = service.state()!.transactions.find((t) => t.investmentId === inv.id)!;
+    expect(opening.categoryId).toBe(invOut.id);
+
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    const principalTx = service.state()!.transactions.find(
+      (t) => t.investmentId === inv.id && t.type === 'others-in',
+    )!;
+    const gainTx = service.state()!.transactions.find(
+      (t) => t.investmentId === inv.id && t.type === 'income',
+    )!;
+    expect(principalTx.categoryId).toBe(invIn.id);
+    expect(gainTx.categoryId).toBe(invGain.id);
+
+    // Completing a second, losing investment has nothing to categorize as a
+    // loss - it just uses the same "Investment (In)" principal category for
+    // the (smaller) amount that actually came back.
+    service.addInvestment({
+      name: 'Risky Bet',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 500,
+      date: '2026-01-01',
+    });
+    const inv2 = service.state()!.investments.find((i) => i.name === 'Risky Bet')!;
+    service.completeInvestment(inv2.id, '2026-06-01', 300);
+    const principalTx2 = service.state()!.transactions.find(
+      (t) => t.investmentId === inv2.id && t.type === 'others-in',
+    )!;
+    expect(principalTx2.categoryId).toBe(invIn.id);
+    expect(principalTx2.amount).toBe(300);
+    // Only the opening "others-out" exists for inv2 - no separate loss
+    // transaction of any kind.
+    expect(
+      service.state()!.transactions.filter((t) => t.investmentId === inv2.id && t.type === 'others-out').length,
+    ).toBe(1);
+  });
+
+  it('splits a completed gain into a fixed-principal others-in plus an income transaction, to toAccountId', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Other Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    const principalTx = service.state()!.transactions.find(
+      (t) => t.investmentId === inv.id && t.type === 'others-in',
+    )!;
+    const gainTx = service.state()!.transactions.find(
+      (t) => t.investmentId === inv.id && t.type === 'income',
+    )!;
+    expect(principalTx.amount).toBe(1000);
+    expect(principalTx.accountId).toBe(bankId('Other Bank'));
+    expect(gainTx.amount).toBe(300);
+    expect(gainTx.accountId).toBe(bankId('Other Bank'));
+    // Other Bank actually received the full 1300 (principal + gain).
+    expect(service.accountBalances().find((a) => a.id === bankId('Other Bank'))!.balance).toBe(1300);
+  });
+
+  it('books a loss as a smaller "Investment (In)" principal transaction, with no separate loss transaction or category', () => {
+    service.addInvestment({
+      name: 'Risky Bet',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Other Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+
+    service.completeInvestment(inv.id, '2026-06-01', 700);
+    const principalTx = service.state()!.transactions.find(
+      (t) => t.investmentId === inv.id && t.type === 'others-in',
+    )!;
+    // The principal transaction itself is just the smaller, real amount
+    // that came back - min(invested, final) - rather than the full 1000
+    // invested with a separate transaction for the 300 shortfall.
+    expect(principalTx.amount).toBe(700);
+    // Other Bank ends up with exactly the 700 that actually came back.
+    expect(service.accountBalances().find((a) => a.id === bankId('Other Bank'))!.balance).toBe(700);
+    // No income (gain) transaction should exist for a losing investment.
+    expect(service.state()!.transactions.some((t) => t.investmentId === inv.id && t.type === 'income')).toBe(
+      false,
+    );
+  });
+
+  it('re-completing does not duplicate transactions, and flips gain<->loss cleanly when the final amount is corrected', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(3); // open + principal + gain
+
+    // Correcting the final amount down into a loss should drop the stale
+    // gain transaction and shrink the principal transaction, not duplicate
+    // anything or add a new one.
+    service.completeInvestment(inv.id, '2026-06-02', 800);
+    const afterCorrection = service.state()!.transactions.filter((t) => t.investmentId === inv.id);
+    expect(afterCorrection.length).toBe(2); // open + principal (no gain, no separate loss)
+    expect(afterCorrection.some((t) => t.type === 'income')).toBe(false);
+    expect(afterCorrection.find((t) => t.type === 'others-in')!.amount).toBe(800);
+
+    // Breaking exactly even should leave just the opening and principal
+    // transactions, with the principal back to the full invested amount.
+    service.completeInvestment(inv.id, '2026-06-03', 1000);
+    const afterBreakeven = service.state()!.transactions.filter((t) => t.investmentId === inv.id);
+    expect(afterBreakeven.length).toBe(2); // open + principal
+    expect(afterBreakeven.find((t) => t.type === 'others-in')!.amount).toBe(1000);
+    expect(afterBreakeven.some((t) => t.type === 'income')).toBe(false);
+  });
+
+  it('keeps the opening transaction in sync when the investment is edited', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+
+    service.updateInvestment(inv.id, {
+      amount: 2000,
+      fromAccountId: bankId('Other Bank'),
+      fromAccountType: 'bank',
+    });
+    const opening = service.state()!.transactions.find(
+      (t) => t.investmentId === inv.id && t.type === 'others-out',
+    )!;
+    expect(opening.amount).toBe(2000);
+    expect(opening.accountId).toBe(bankId('Other Bank'));
+  });
+
+  it('adds/removes the opening transaction when "from fund" is added or cleared after creation', () => {
+    service.addInvestment({
+      name: 'Cash Deal',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(0);
+
+    service.updateInvestment(inv.id, { fromAccountId: bankId('Main Bank'), fromAccountType: 'bank' });
+    expect(
+      service.state()!.transactions.filter((t) => t.investmentId === inv.id && t.type === 'others-out')
+        .length,
+    ).toBe(1);
+
+    service.updateInvestment(inv.id, { fromAccountId: undefined, fromAccountType: undefined });
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(0);
+  });
+
+  it('completing an investment with no "to fund" books no transactions at all, and clears stale ones if "to fund" is later removed', () => {
+    service.addInvestment({
+      name: 'Handshake Deal',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    expect(service.state()!.investments[0].status).toBe('completed');
+    // Only the opening "others-out" exists - no principal or gain booked,
+    // since there's nowhere to book them to.
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(1);
+
+    // Give it a "to fund" retroactively and re-complete - now it books.
+    service.updateInvestment(inv.id, { toAccountId: bankId('Other Bank'), toAccountType: 'bank' });
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(3);
+
+    // Clearing "to fund" again and re-completing drops the stale principal/gain.
+    service.updateInvestment(inv.id, { toAccountId: undefined, toAccountType: undefined });
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(1);
+  });
+
+  it('removes all linked transactions when the investment is deleted', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 1000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    service.completeInvestment(inv.id, '2026-06-01', 1300);
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(3); // open + principal + gain
+
+    service.removeInvestment(inv.id);
+    expect(service.state()!.transactions.filter((t) => t.investmentId === inv.id).length).toBe(0);
+    expect(service.state()!.investments.length).toBe(0);
+  });
+});
+
+describe('StateService.netWorth with active investments', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 5000 });
+  });
+
+  function bankId(name: string): string {
+    return service.state()!.banks.find((b) => b.name === name)!.id;
+  }
+
+  it("counts an active investment's principal as part of Net Worth when it has a \"from fund\", so opening one doesn't make wealth disappear", () => {
+    const before = service.netWorth();
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-01-01',
+    });
+
+    expect(service.accountBalances().find((a) => a.id === bankId('Main Bank'))!.balance).toBe(3000);
+    expect(service.activeInvestmentTotal()).toBe(2000);
+    expect(service.netWorth()).toBe(before);
+  });
+
+  it('DOES add an investment with no "from fund" to Net Worth - it\'s newly-disclosed wealth SparrowFi had no prior knowledge of, not double-counted', () => {
+    const before = service.netWorth();
+    service.addInvestment({
+      name: 'Cash Deal',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-01-01',
+    });
+
+    // Nothing was deducted from any tracked account (no "from fund"), so
+    // counting the 2000 here is disclosure, not double-counting.
+    expect(service.activeInvestmentTotal()).toBe(2000);
+    expect(service.netWorth()).toBe(before + 2000);
+  });
+
+  it('excludes a completed investment from activeInvestmentTotal - its payout is already back in the account balance', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    const before = service.netWorth();
+
+    service.completeInvestment(inv.id, '2026-06-01', 2500);
+
+    expect(service.activeInvestmentTotal()).toBe(0);
+    // Net Worth only goes up by the actual gain (500), not double-counted
+    // with the principal (which is now back in the bank).
+    expect(service.netWorth()).toBeCloseTo(before + 500);
+  });
+
+  it('reduces Net Worth by the real loss once a losing investment completes', () => {
+    service.addInvestment({
+      name: 'Risky Bet',
+      fromAccountId: bankId('Main Bank'),
+      fromAccountType: 'bank',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    const beforeOpening = service.netWorth();
+
+    service.completeInvestment(inv.id, '2026-06-01', 1500);
+
+    expect(service.netWorth()).toBeCloseTo(beforeOpening - 500);
   });
 });
 
@@ -138,6 +675,20 @@ describe('StateService bank/wallet initial capital', () => {
   it('creates no opening transaction when initial capital is zero', () => {
     service.addBank({ name: 'Empty Bank', color: '#22C55E', initialCapital: 0 });
     expect(service.state()!.transactions.length).toBe(0);
+  });
+
+  it('categorizes a new opening transaction as "Adjustment (In)" when that locked category exists', () => {
+    service.addCategory({ name: 'Adjustment (In)', color: '#06B6D4', type: 'others-in', locked: true });
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 1500 });
+    const adjustmentIn = service.state()!.categories[0];
+
+    const opening = service.state()!.transactions[0];
+    expect(opening.categoryId).toBe(adjustmentIn.id);
+  });
+
+  it('leaves the opening transaction uncategorized when no "Adjustment (In)" category exists', () => {
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 1500 });
+    expect(service.state()!.transactions[0].categoryId).toBeUndefined();
   });
 
   it('updateBank only ever changes name/color, never initialCapital', () => {

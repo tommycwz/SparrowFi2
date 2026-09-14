@@ -17,6 +17,10 @@
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
     </div>
     <div class="stat">
+      <div class="stat-label muted">Monthly Commitment</div>
+      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().commitment) }}</div>
+    </div>
+    <div class="stat">
       <div class="stat-label muted">Net This Month</div>
       <div
         class="stat-value"
@@ -75,13 +79,14 @@
     @if (!hasCashFlowActivity()) {
       <div class="empty-state card">
         <sf-icon name="bar-chart" [size]="28" />
-        <p>No income or expenses in the last {{ cashFlowTrend().months.length }} months yet.</p>
+        <p>No income, expenses, or commitments in the last {{ cashFlowTrend().months.length }} months yet.</p>
       </div>
     } @else {
       <div class="card cash-flow-card">
         <div class="cash-flow-legend">
           <span class="legend-item"><span class="legend-dot income"></span>Income</span>
           <span class="legend-item"><span class="legend-dot expense"></span>Expense</span>
+          <span class="legend-item"><span class="legend-dot commitment"></span>Commitment</span>
         </div>
         <div class="cash-flow-chart">
           @for (m of cashFlowTrend().months; track m.key) {
@@ -96,6 +101,11 @@
                   class="cash-flow-bar expense"
                   [style.height.%]="barHeightPercent(m.expense, cashFlowTrend().max)"
                   [attr.title]="'Expense: ' + money(m.expense)"
+                ></div>
+                <div
+                  class="cash-flow-bar commitment"
+                  [style.height.%]="barHeightPercent(m.commitment, cashFlowTrend().max)"
+                  [attr.title]="'Commitment: ' + money(m.commitment)"
                 ></div>
               </div>
               <span class="cash-flow-label muted">{{ m.label }}</span>
@@ -238,7 +248,7 @@
             <div
               class="tx-amount"
               [class.positive]="t.type === 'income' || t.type === 'others-in'"
-              [class.negative]="t.type === 'expense' || t.type === 'others-out'"
+              [class.negative]="t.type === 'expense' || t.type === 'commitment' || t.type === 'others-out'"
             >
               <span class="sign">{{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}</span>
               <span class="cur">{{ currencySymbol() }}</span>

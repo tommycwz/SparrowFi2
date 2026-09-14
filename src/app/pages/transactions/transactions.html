@@ -31,6 +31,10 @@
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
     </div>
     <div class="stat">
+      <div class="stat-label muted">{{ statsPeriodLabel() }} Commitment</div>
+      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().commitment) }}</div>
+    </div>
+    <div class="stat">
       <div class="stat-label muted">Net Balance</div>
       <div
         class="stat-value"
@@ -152,7 +156,7 @@
             <div
               class="tx-amount"
               [class.positive]="t.type === 'income' || t.type === 'others-in'"
-              [class.negative]="t.type === 'expense' || t.type === 'others-out'"
+              [class.negative]="t.type === 'expense' || t.type === 'commitment' || t.type === 'others-out'"
             >
               <span class="sign">{{ t.type === 'income' || t.type === 'others-in' ? '+' : '-' }}</span>
               <span class="cur">{{ currencySymbol() }}</span>

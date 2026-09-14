@@ -12,3 +12,12 @@ export function fdMaturityDate(fd: FixedDeposit): string {
 export function fdMaturityValue(fd: FixedDeposit): number {
   return fd.amount * (1 + (fd.percentage / 100) * (fd.months / 12));
 }
+
+/** Interest/gains portion of the maturity payout only - `fdMaturityValue`
+ * minus the original principal (`fd.amount`). Split out as its own
+ * function so `StateService` can book it as a separate Income transaction
+ * from the principal returned, instead of the whole payout looking like a
+ * single lump-sum transfer. */
+export function fdGainValue(fd: FixedDeposit): number {
+  return fdMaturityValue(fd) - fd.amount;
+}

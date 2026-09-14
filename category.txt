@@ -2,21 +2,26 @@ SparrowFi - Default Categories
 ================================
 These are the categories a brand-new file is seeded with (see
 src/app/core/default-categories.ts, which must be kept in sync with this
-list if it ever changes).
+list if it ever changes). An existing account is topped up to match
+automatically whenever it loads - there's no manual "Load Suggested
+Categories" step.
+
+Entries marked (Locked) can't be deleted from the Categories page -
+StateService looks them up by this exact name to auto-categorize
+transactions it generates itself. Fixed Deposits and Investments share
+the same three "Investment ..." categories rather than having their own.
 
 Income
 ------
 Salary
-Dividend Gain
-Investment Profit
-Rental Income
+Investment Profit (Locked)
 Others (Income)
 
 Expenses
 --------
-Food and Drinks
-Grocery
-Bills and Utilities
+Food & Drink
+Groceries
+Bills & Utilities
 Petrol & Transport
 Toll
 Shopping
@@ -26,16 +31,18 @@ Travel
 Work Expenses
 Others (Expenses)
 
+Commitment
+----------
+(none - no one-size-fits-all starter set for fixed obligations)
+
 Others In
 ---------
 Transfer (In)
-Investment (In)
-Adjustment (In)
+Investment (In) (Locked)
+Adjustment (In) (Locked)
 
 Others Out
 ----------
 Transfer (Out)
-Investment (Out)
-Bank Withdrawal
-Credit Card Payment
-Adjustment (Out)
+Investment (Out) (Locked)
+Adjustment (Out) (Locked)

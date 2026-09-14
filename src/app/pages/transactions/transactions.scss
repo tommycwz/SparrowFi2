@@ -42,7 +42,7 @@
 
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
@@ -433,7 +433,15 @@
 
 @media (max-width: 480px) {
   .stat-value {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
+  }
+
+  .stat-label {
+    font-size: 0.62rem;
+  }
+
+  .stat {
+    padding: 0.3rem 0.35rem;
   }
 
   .head-actions {

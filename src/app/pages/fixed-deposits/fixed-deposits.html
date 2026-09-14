@@ -1,7 +1,7 @@
 <div class="stack">
   <div class="page-head">
     <h1>Fixed Deposits</h1>
-    <button type="button" class="btn btn-primary" (click)="openAdd()" [disabled]="banks().length === 0">
+    <button type="button" class="btn btn-primary" (click)="openAdd()">
       <sf-icon name="plus" [size]="16" /> Add
     </button>
   </div>
@@ -9,7 +9,7 @@
   @if (banks().length === 0) {
     <div class="banner banner-info">
       <sf-icon name="info" [size]="16" />
-      <span>Add a bank account first, then you can record fixed deposits against it.</span>
+      <span>You can record a fixed deposit without a bank - it'll be tracked as a memo only.</span>
     </div>
   }
 
@@ -26,6 +26,9 @@
             <div>
               <div class="fd-bank">{{ bankName(fd.bankId) }}</div>
               <div class="muted small">{{ fd.startDate }} → {{ maturityDate(fd) }}</div>
+              @if (fd.remarks) {
+                <div class="fd-remarks muted small">{{ fd.remarks }}</div>
+              }
             </div>
             <span class="status-badge" [class]="'status-' + fd.status">{{ fd.status }}</span>
           </div>
@@ -35,7 +38,11 @@
               <div class="fd-value">{{ money(fd.amount) }}</div>
             </div>
             <div>
-              <div class="muted small">{{ fd.percentage }}% · {{ fd.months }}mo</div>
+              <div class="muted small">Gain ({{ fd.percentage }}% · {{ fd.months }}mo)</div>
+              <div class="fd-value fd-gain">+{{ money(gainValue(fd)) }}</div>
+            </div>
+            <div>
+              <div class="muted small">Maturity Value</div>
               <div class="fd-value">{{ money(maturityValue(fd)) }}</div>
             </div>
           </div>
@@ -58,11 +65,12 @@
   <sf-modal [title]="editingId() ? 'Edit Fixed Deposit' : 'Add Fixed Deposit'" (close)="showModal.set(false)">
     <div class="field-row">
       <label>
-        Bank
+        Bank (optional)
         <select
           [ngModel]="form().bankId"
           (ngModelChange)="form.update((f) => ({ ...f, bankId: $event }))"
         >
+          <option value="">None (memo only)</option>
           @for (b of banks(); track b.id) {
             <option [value]="b.id">{{ b.name }}</option>
           }
@@ -117,6 +125,15 @@
             <option [value]="b.id">{{ b.name }}</option>
           }
         </select>
+      </label>
+      <label>
+        Remarks
+        <input
+          type="text"
+          [ngModel]="form().remarks"
+          (ngModelChange)="form.update((f) => ({ ...f, remarks: $event }))"
+          placeholder="Optional"
+        />
       </label>
     </div>
     <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
