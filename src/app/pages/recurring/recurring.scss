@@ -1,0 +1,155 @@
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.page-head h1 {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.head-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.6rem;
+}
+
+.small {
+  font-size: 0.75rem;
+}
+
+/* ----- Recurring card -------------------------------------------------- */
+
+.rec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rec-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.rec-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rec-amount {
+  font-weight: 800;
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.rec-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  cursor: pointer;
+}
+
+.rec-value {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+
+.rec-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rec-notes {
+  font-style: italic;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.due-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgb(220 38 38 / 12%);
+  color: var(--danger);
+}
+
+.rec-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ----- Add/Edit modal --------------------------------------------------- */
+
+.type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.type-tab {
+  flex: 1;
+  min-width: 90px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.type-tab:hover:not(.active) {
+  border-color: var(--tab-color);
+  color: var(--text);
+}
+
+.type-tab.active {
+  background: var(--tab-color);
+  border-color: var(--tab-color);
+  color: #fff;
+}
+
+/* The frequency tabs don't carry a per-option `--tab-color` (there's no
+   accent-per-frequency convention like there is per transaction type), so
+   they fall back to the app's own accent color when active instead of an
+   undefined `--tab-color`. */
+.freq-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.freq-tab:hover:not(.active) {
+  border-color: var(--accent);
+}

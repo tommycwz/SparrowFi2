@@ -1,0 +1,195 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Recurring</h1>
+    <div class="head-actions">
+      @if (recurringList().length > 0) {
+        <button type="button" class="btn btn-secondary" (click)="triggerAll()">
+          <sf-icon name="repeat" [size]="16" /> Add All to Transactions
+        </button>
+      }
+      <button type="button" class="btn btn-primary" (click)="openAdd()">
+        <sf-icon name="plus" [size]="16" /> Add
+      </button>
+    </div>
+  </div>
+
+  @if (recurringList().length === 0) {
+    <div class="empty-state card">
+      <sf-icon name="repeat" [size]="28" />
+      <p>No recurring transactions yet.</p>
+      <p class="muted small">
+        Set up a bill, subscription or paycheck once, then tap it whenever it actually happens to add it to
+        Transactions - nothing is booked automatically.
+      </p>
+    </div>
+  } @else {
+    <div class="stack">
+      @for (r of recurringList(); track r.id) {
+        <div class="card rec-card">
+          <div class="rec-head" (click)="openEdit(r)">
+            <div>
+              <div class="rec-name">
+                <span class="rec-dot" [style.background]="typeColor(r.type)"></span>
+                {{ r.name }}
+              </div>
+              <div class="muted small">
+                {{ frequencyLabels[r.frequency] }} · {{ typeLabels[r.type] }}
+              </div>
+            </div>
+            <div class="rec-amount" [style.color]="typeColor(r.type)">{{ money(r.amount) }}</div>
+          </div>
+          <div class="rec-body" (click)="openEdit(r)">
+            <div>
+              <div class="muted small">Next Date</div>
+              <div class="rec-value">
+                {{ r.nextDate }}
+                @if (isDue(r)) {
+                  <span class="due-badge">Due</span>
+                }
+              </div>
+            </div>
+            <div>
+              <div class="muted small">Account</div>
+              <div class="rec-value">
+                <span class="rec-chip-dot" [style.background]="accountColor(r)"></span>
+                {{ accountLabel(r) }}
+              </div>
+            </div>
+            <div>
+              <div class="muted small">Category</div>
+              <div class="rec-value">
+                <span class="rec-chip-dot" [style.background]="categoryColor(r.categoryId)"></span>
+                {{ categoryName(r.categoryId) }}
+              </div>
+            </div>
+          </div>
+          @if (r.notes) {
+            <div class="rec-notes muted small" (click)="openEdit(r)">{{ r.notes }}</div>
+          }
+          <div class="rec-actions">
+            <button type="button" class="btn btn-primary" (click)="triggerOne(r)">
+              <sf-icon name="check" [size]="16" /> Add to Transactions
+            </button>
+            <button type="button" class="btn btn-danger" (click)="remove(r.id)">Delete</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit Recurring' : 'Add Recurring'" (close)="showModal.set(false)">
+    <div class="field-row">
+      <label>
+        Name
+        <input
+          type="text"
+          [ngModel]="form().name"
+          (ngModelChange)="form.update((f) => ({ ...f, name: $event }))"
+          placeholder="e.g. Netflix, Rent, Salary"
+        />
+      </label>
+
+      <label>
+        Type
+        <div class="type-tabs" role="group" aria-label="Transaction type">
+          @for (t of typeOptions; track t) {
+            <button
+              type="button"
+              class="type-tab"
+              [class.active]="form().type === t"
+              [style.--tab-color]="typeColor(t)"
+              (click)="onTypeChange(t)"
+            >
+              {{ typeLabels[t] }}
+            </button>
+          }
+        </div>
+      </label>
+
+      <label>
+        Amount
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          [ngModel]="form().amount"
+          (ngModelChange)="form.update((f) => ({ ...f, amount: $event }))"
+        />
+      </label>
+
+      <label>
+        Repeats
+        <div class="type-tabs" role="group" aria-label="Frequency">
+          @for (freq of frequencyOptions; track freq) {
+            <button
+              type="button"
+              class="type-tab freq-tab"
+              [class.active]="form().frequency === freq"
+              (click)="form.update((f) => ({ ...f, frequency: freq }))"
+            >
+              {{ frequencyLabels[freq] }}
+            </button>
+          }
+        </div>
+      </label>
+
+      <label>
+        Next Date
+        <input
+          type="date"
+          [ngModel]="form().nextDate"
+          (ngModelChange)="form.update((f) => ({ ...f, nextDate: $event }))"
+        />
+      </label>
+
+      <label>
+        Account
+        <select [ngModel]="form().accountType" (ngModelChange)="onAccountTypeChange($event)">
+          <option value="bank">Bank</option>
+          <option value="wallet">Wallet</option>
+          <option value="card">Card</option>
+          <option value="cash">Cash</option>
+          <option value="others">Others</option>
+        </select>
+      </label>
+
+      @if (accountOptions().length > 0) {
+        <label>
+          Which {{ form().accountType }}
+          <sf-color-select
+            [options]="accountOptions()"
+            [value]="form().accountId"
+            (valueChange)="form.update((f) => ({ ...f, accountId: $event }))"
+            placeholder="Select…"
+          />
+        </label>
+      }
+
+      <label>
+        Category
+        <sf-color-select
+          [options]="categoriesForType()"
+          [value]="form().categoryId"
+          (valueChange)="form.update((f) => ({ ...f, categoryId: $event }))"
+          [allowEmpty]="true"
+          emptyLabel="Uncategorized"
+          placeholder="Uncategorized"
+        />
+      </label>
+
+      <label>
+        Notes
+        <input
+          type="text"
+          [ngModel]="form().notes"
+          (ngModelChange)="form.update((f) => ({ ...f, notes: $event }))"
+          placeholder="Optional"
+        />
+      </label>
+    </div>
+
+    <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+  </sf-modal>
+}

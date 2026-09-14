@@ -8,6 +8,7 @@ import {
   Currency,
   FixedDeposit,
   Investment,
+  RecurringTransaction,
   Wallet,
   createEmptyState,
 } from './models';
@@ -56,6 +57,11 @@ export function migrateState(raw: unknown): AppState {
     // Investments didn't exist in any legacy file format, so there's
     // nothing to migrate - just make sure the field is always an array.
     investments: Array.isArray(src.investments) ? src.investments.map(normalizeInvestment) : [],
+    // Same reasoning as investments - Recurring Transactions is new enough
+    // that no legacy file ever had it either.
+    recurringTransactions: Array.isArray(src.recurringTransactions)
+      ? src.recurringTransactions.map(normalizeRecurring)
+      : [],
   };
 
   // Legacy `creditCards[]` -> `cards[]`.
@@ -182,6 +188,21 @@ function normalizeFixedDeposit(fd: any): FixedDeposit {
     months: typeof fd.months === 'number' ? fd.months : 12,
     status: fd.status ?? (fd.isMatured ? 'matured' : 'active'),
     remarks: fd.remarks,
+  };
+}
+
+function normalizeRecurring(r: any): RecurringTransaction {
+  return {
+    id: r.id ?? generateId(),
+    name: r.name ?? 'Recurring',
+    amount: typeof r.amount === 'number' ? r.amount : 0,
+    type: r.type ?? 'expense',
+    accountType: r.accountType ?? 'bank',
+    accountId: r.accountId,
+    categoryId: r.categoryId,
+    frequency: r.frequency ?? 'monthly',
+    nextDate: r.nextDate ?? new Date().toISOString().slice(0, 10),
+    notes: r.notes,
   };
 }
 

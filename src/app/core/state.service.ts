@@ -6,6 +6,7 @@ import {
   Category,
   FixedDeposit,
   Investment,
+  RecurringTransaction,
   Transaction,
   Wallet,
   createEmptyState,
@@ -14,6 +15,7 @@ import { CloudDataService } from './cloud-data.service';
 import { generateId } from './id.util';
 import { createDefaultCategories, ensureRequiredCategories } from './default-categories';
 import { fdGainValue, fdMaturityDate } from './fixed-deposit.util';
+import { nextOccurrenceDate } from './recurring.util';
 
 export interface AccountBalance {
   kind: 'bank' | 'wallet' | 'card' | 'bucket';
@@ -173,7 +175,16 @@ export class StateService {
     const loaded = await this.cloudData.load();
     this._state.set(
       loaded
-        ? { ...loaded, categories: ensureRequiredCategories(loaded.categories) }
+        ? {
+            ...loaded,
+            categories: ensureRequiredCategories(loaded.categories),
+            // Backfills the field for any account saved before Recurring
+            // Transactions existed - without this, an older save's `loaded`
+            // object simply has no `recurringTransactions` key at all, and
+            // every `s.recurringTransactions.___` call throughout this
+            // service would throw the moment that account's data loads.
+            recurringTransactions: loaded.recurringTransactions ?? [],
+          }
         : { ...createEmptyState(), categories: createDefaultCategories() },
     );
     this._dirty.set(false);
@@ -850,6 +861,107 @@ export class StateService {
       investments: s.investments.filter((i) => i.id !== id),
       transactions: s.transactions.filter((t) => t.investmentId !== id),
     }));
+  }
+
+  // ----- Recurring Transactions ------------------------------------------
+  // A recurring item is only ever a *template* - creating or editing one
+  // never touches `transactions[]` on its own. `triggerRecurring`/
+  // `triggerAllRecurring` are the only two places that turn a template into
+  // a real, ordinary transaction (see `RecurringTransaction`'s doc comment
+  // for why there's no background scheduler doing this automatically).
+
+  addRecurring(r: Omit<RecurringTransaction, 'id'>): void {
+    this.updateState((s) => ({
+      ...s,
+      recurringTransactions: [...s.recurringTransactions, { ...r, id: generateId() }],
+    }));
+  }
+
+  updateRecurring(id: string, patch: Partial<Omit<RecurringTransaction, 'id'>>): void {
+    this.updateState((s) => ({
+      ...s,
+      recurringTransactions: s.recurringTransactions.map((r) => (r.id === id ? { ...r, ...patch, id } : r)),
+    }));
+  }
+
+  /** Deleting a recurring template does NOT touch any transaction it
+   * already produced (see `Transaction.recurringId`'s doc comment) - only
+   * the template itself, and only future occurrences, go away. */
+  removeRecurring(id: string): void {
+    this.updateState((s) => ({
+      ...s,
+      recurringTransactions: s.recurringTransactions.filter((r) => r.id !== id),
+    }));
+  }
+
+  /** Books one recurring item as a real transaction dated on its current
+   * `nextDate` (carrying its amount/type/account/category/notes - notes
+   * are prefixed with the recurring item's own name so the generated
+   * transaction is traceable back to it at a glance), then advances
+   * `nextDate` to the following occurrence per `frequency` - so triggering
+   * it again later picks up right where this one left off instead of
+   * needing a manual date edit every time. Silently no-ops if the id no
+   * longer exists (e.g. a stale reference from a closed tab). */
+  triggerRecurring(id: string): void {
+    this.updateState((s) => {
+      const r = s.recurringTransactions.find((x) => x.id === id);
+      if (!r) return s;
+      const transaction: Transaction = {
+        id: generateId(),
+        date: r.nextDate,
+        amount: r.amount,
+        type: r.type,
+        accountType: r.accountType,
+        accountId: r.accountId,
+        categoryId: r.categoryId,
+        notes: this.recurringNotes(r),
+        recurringId: id,
+      };
+      return {
+        ...s,
+        transactions: [...s.transactions, transaction],
+        recurringTransactions: s.recurringTransactions.map((x) =>
+          x.id === id ? { ...x, nextDate: nextOccurrenceDate(x.nextDate, x.frequency) } : x,
+        ),
+      };
+    });
+  }
+
+  /** Same as `triggerRecurring`, but for every recurring item at once - the
+   * Recurring page's "Add All to Transactions" action - as a single state
+   * update rather than one signal write per item. */
+  triggerAllRecurring(): void {
+    this.updateState((s) => {
+      if (s.recurringTransactions.length === 0) return s;
+      const newTransactions: Transaction[] = s.recurringTransactions.map((r) => ({
+        id: generateId(),
+        date: r.nextDate,
+        amount: r.amount,
+        type: r.type,
+        accountType: r.accountType,
+        accountId: r.accountId,
+        categoryId: r.categoryId,
+        notes: this.recurringNotes(r),
+        recurringId: r.id,
+      }));
+      return {
+        ...s,
+        transactions: [...s.transactions, ...newTransactions],
+        recurringTransactions: s.recurringTransactions.map((r) => ({
+          ...r,
+          nextDate: nextOccurrenceDate(r.nextDate, r.frequency),
+        })),
+      };
+    });
+  }
+
+  /** Builds the `notes` for a transaction generated from a recurring
+   * template: leads with the recurring item's own name (its "title") so
+   * the generated transaction reads like the app's other auto-generated
+   * notes (e.g. `Fixed Deposit - <bank>`, `Investment - <name>`), then
+   * appends any notes typed on the template itself, if present. */
+  private recurringNotes(r: RecurringTransaction): string {
+    return r.notes ? `${r.name} - ${r.notes}` : r.name;
   }
 
   private requireState(): AppState {

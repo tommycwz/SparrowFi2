@@ -163,6 +163,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         @case ('trending-up') {
           <path d="m23 6-9.5 9.5-5-5L1 18" /><path d="M17 6h6v6" />
         }
+        @case ('repeat') {
+          <path d="M17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+          <path d="M7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        }
       }
     </svg>
   `,

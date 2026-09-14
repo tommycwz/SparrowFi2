@@ -30,6 +30,10 @@ export const routes: Routes = [
       import('./pages/investments/investments').then((m) => m.InvestmentsPage),
   },
   {
+    path: 'recurring',
+    loadComponent: () => import('./pages/recurring/recurring').then((m) => m.RecurringPage),
+  },
+  {
     path: 'reports',
     loadComponent: () => import('./pages/reports/reports').then((m) => m.ReportsPage),
   },

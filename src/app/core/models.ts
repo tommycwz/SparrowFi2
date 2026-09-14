@@ -111,6 +111,15 @@ export interface Transaction {
    * completion payout) - links back to `Investment.id`. Absent on every
    * other transaction. */
   investmentId?: string;
+  /** Set only on a transaction `StateService.triggerRecurring`/
+   * `triggerAllRecurring` created from a `RecurringTransaction` template -
+   * links back to `RecurringTransaction.id`, purely for traceability
+   * ("where did this row come from"). Unlike `fdId`/`investmentId`,
+   * deleting the recurring template does NOT cascade-delete transactions
+   * it already produced: those are ordinary historical transactions the
+   * user may since have edited, not a payout tightly coupled to a still-
+   * live FD/Investment record. Absent on every other transaction. */
+  recurringId?: string;
 }
 
 export interface FixedDeposit {
@@ -174,6 +183,48 @@ export interface Investment {
   remarks?: string;
 }
 
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+/** Display label for each recurring frequency - single source of truth for
+ * the Recurring page's picker and card captions. */
+export const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
+
+/** A template for a transaction that repeats on a schedule - a subscription,
+ * rent, a recurring paycheck, and so on. Deliberately does NOT auto-create
+ * transactions on its own (there's no background scheduler in a client-only
+ * PWA with no server component): the user reviews the Recurring page and
+ * taps a specific item, or "Add All", when they want it actually booked -
+ * see `StateService.triggerRecurring`/`triggerAllRecurring`, which stamp a
+ * real `Transaction` dated `nextDate` and then advance `nextDate` to the
+ * following occurrence (`nextOccurrenceDate`) so the template is ready for
+ * next time without a manual date edit. `nextDate` can be moved to any date
+ * at all (not just the day it was created on), so an existing bill on any
+ * schedule can be entered as-is rather than forced onto today's date. */
+export interface RecurringTransaction {
+  id: string;
+  /** Short label for the list - "Netflix", "Rent", "Salary" - independent
+   * of category naming, since two different recurring items can share a
+   * category. */
+  name: string;
+  amount: number;
+  type: TransactionType;
+  accountType: AccountType;
+  accountId?: string;
+  categoryId?: string;
+  frequency: RecurringFrequency;
+  /** The date this item is next due, and what gets stamped on the
+   * transaction it creates when triggered - freely editable to any date,
+   * not limited to "today" or a fixed day-of-month. */
+  nextDate: string;
+  /** Freeform notes, copied onto every transaction this template creates. */
+  notes?: string;
+}
+
 export interface AppState {
   user: UserInfo;
   settings: Settings;
@@ -184,6 +235,7 @@ export interface AppState {
   transactions: Transaction[];
   fixedDeposits: FixedDeposit[];
   investments: Investment[];
+  recurringTransactions: RecurringTransaction[];
 }
 
 export const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
@@ -249,5 +301,6 @@ export function createEmptyState(): AppState {
     transactions: [],
     fixedDeposits: [],
     investments: [],
+    recurringTransactions: [],
   };
 }
