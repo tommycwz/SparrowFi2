@@ -9,7 +9,6 @@ import { monthKeyOf } from '../../core/format.util';
  * when the suite runs. */
 const TODAY = new Date().toISOString().slice(0, 10);
 const THIS_MONTH = monthKeyOf();
-const THIS_YEAR = new Date().getFullYear();
 
 describe('ReportsPage', () => {
   let state: StateService;
@@ -99,7 +98,7 @@ describe('ReportsPage', () => {
       state.addTransaction({ date: '2020-01-15', amount: 9999, type: 'income', accountType: 'cash' });
     });
 
-    it('sums income/expense/others separately and computes net from income-expense only', () => {
+    it('sums income/expense/others separately and computes net from income-expense-commitment', () => {
       page.month.set(THIS_MONTH);
       const t = page.totals();
       expect(t.income).toBe(1000);
@@ -134,7 +133,41 @@ describe('ReportsPage', () => {
     });
   });
 
-  describe('income/expense analysis', () => {
+  describe('ratios', () => {
+    it('is all null when there is no income to divide by', () => {
+      page.month.set(THIS_MONTH);
+      const r = page.ratios();
+      expect(r.savingsRate).toBeNull();
+      expect(r.commitmentRatio).toBeNull();
+      expect(r.variableRatio).toBeNull();
+    });
+
+    it('computes savings/commitment/variable ratios as percentages of income', () => {
+      state.addTransaction({ date: TODAY, amount: 1000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 300, type: 'commitment', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
+      page.month.set(THIS_MONTH);
+
+      const r = page.ratios();
+      expect(r.commitmentRatio).toBe(30);
+      expect(r.variableRatio).toBe(20);
+      expect(r.savingsRate).toBe(50); // (1000-300-200)/1000
+    });
+
+    it('isSavingsRatePositive treats a missing income (null rate) as non-negative', () => {
+      page.month.set(THIS_MONTH);
+      expect(page.isSavingsRatePositive()).toBe(true);
+    });
+
+    it('isSavingsRatePositive is false once the period ran a deficit', () => {
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 500, type: 'expense', accountType: 'cash' });
+      page.month.set(THIS_MONTH);
+      expect(page.isSavingsRatePositive()).toBe(false);
+    });
+  });
+
+  describe('income/expense/commitment analysis', () => {
     beforeEach(() => {
       state.addCategory({ name: 'Salary', color: '#22C55E', type: 'income' });
       state.addCategory({ name: 'Freelance', color: '#3B82F6', type: 'income' });
@@ -199,15 +232,17 @@ describe('ReportsPage', () => {
     });
   });
 
-  describe('card/wallet spending analysis', () => {
+  describe('spending by channel', () => {
     beforeEach(() => {
       state.addCard({ name: 'Visa', color: '#3B82F6' });
       state.addCard({ name: 'Amex', color: '#F59E0B' });
       state.addWallet({ name: 'Touch n Go', color: '#22C55E', initialCapital: 0 });
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
       state.addCategory({ name: 'Dining', color: '#F97316', type: 'expense' });
       const [visa, amex] = state.state()!.cards;
       const [ttng] = state.state()!.wallets;
+      const [maybank] = state.state()!.banks;
       const [groceries, dining] = state.state()!.categories;
 
       state.addTransaction({
@@ -250,8 +285,13 @@ describe('ReportsPage', () => {
         accountType: 'wallet',
         accountId: ttng.id,
       });
-      // Bank spending shouldn't leak into either card or wallet analysis.
-      state.addTransaction({ date: TODAY, amount: 500, type: 'expense', accountType: 'bank' });
+      state.addTransaction({
+        date: TODAY,
+        amount: 500,
+        type: 'expense',
+        accountType: 'bank',
+        accountId: maybank.id,
+      });
       page.month.set(THIS_MONTH);
     });
 
@@ -268,10 +308,10 @@ describe('ReportsPage', () => {
       expect(wallets.items[0].name).toBe('Touch n Go');
     });
 
-    it('turns card spending into donut segments summing to a full 100-unit ring', () => {
-      const segments = page.cardSpendingDonutSegments();
-      const totalDash = segments.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
-      expect(totalDash).toBe(100);
+    it('groups bank expenses by bank, separate from card and wallet spending', () => {
+      const banks = page.bankSpendingAnalysis();
+      expect(banks.total).toBe(500);
+      expect(banks.items[0].name).toBe('Maybank');
     });
 
     it("breaks each card's own spending down by category", () => {
@@ -301,6 +341,24 @@ describe('ReportsPage', () => {
       expect(visaSlice.amount).toBe(300 + 250);
       expect(cards.total).toBe(400 + 250);
     });
+
+    it('defaults spendingChannel to Bank, and activeChannelAnalysis follows the selected tab', () => {
+      expect(page.spendingChannel()).toBe('bank');
+      expect(page.activeChannelAnalysis().total).toBe(500);
+
+      page.spendingChannel.set('card');
+      expect(page.activeChannelAnalysis().total).toBe(400);
+
+      page.spendingChannel.set('wallet');
+      expect(page.activeChannelAnalysis().total).toBe(40);
+    });
+
+    it('turns the active channel spending into donut segments summing to a full 100-unit ring', () => {
+      page.spendingChannel.set('card');
+      const segments = page.activeChannelDonutSegments();
+      const totalDash = segments.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
+      expect(totalDash).toBe(100);
+    });
   });
 
   describe('monthlyBreakdown', () => {
@@ -310,11 +368,12 @@ describe('ReportsPage', () => {
       expect(page.monthlyBreakdown().months).toEqual([]);
     });
 
-    it('covers every month in a Year filter, buckets income/expense per month', () => {
+    it('covers every month in a Year filter, buckets income/expense/commitment per month', () => {
       page.setMode('year');
       page.year.set(2026);
       state.addTransaction({ date: '2026-03-10', amount: 500, type: 'income', accountType: 'cash' });
       state.addTransaction({ date: '2026-03-12', amount: 100, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: '2026-03-14', amount: 50, type: 'commitment', accountType: 'cash' });
 
       expect(page.hasMonthlyChart()).toBe(true);
       const { months, max } = page.monthlyBreakdown();
@@ -324,6 +383,7 @@ describe('ReportsPage', () => {
       const march = months.find((m) => m.key === '2026-03')!;
       expect(march.income).toBe(500);
       expect(march.expense).toBe(100);
+      expect(march.commitment).toBe(50);
       expect(max).toBe(500);
     });
 
@@ -334,6 +394,42 @@ describe('ReportsPage', () => {
       expect(page.periodRange().monthCount).toBeGreaterThan(36);
       expect(page.hasMonthlyChart()).toBe(false);
       expect(page.rangeTooWideForChart()).toBe(true);
+    });
+
+    it('barHeightPercent scales a value against the series max, and is 0 when max is 0', () => {
+      expect(page.barHeightPercent(50, 200)).toBe(25);
+      expect(page.barHeightPercent(50, 0)).toBe(0);
+    });
+  });
+
+  describe('vulnerabilityTrend', () => {
+    it('is null for a single-month period (nothing to trend)', () => {
+      page.setMode('month');
+      expect(page.vulnerabilityTrend()).toBeNull();
+    });
+
+    it('plots a commitment-ratio and variable-ratio line across the months in the period', () => {
+      page.setMode('year');
+      page.year.set(2026);
+      state.addTransaction({ date: '2026-01-10', amount: 1000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: '2026-01-12', amount: 300, type: 'commitment', accountType: 'cash' });
+      state.addTransaction({ date: '2026-01-14', amount: 200, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: '2026-02-10', amount: 1000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: '2026-02-12', amount: 600, type: 'commitment', accountType: 'cash' });
+
+      const vt = page.vulnerabilityTrend();
+      expect(vt).not.toBeNull();
+      expect(vt!.commitmentDots.length).toBe(2);
+      // January: 300/1000 = 30%. February: 600/1000 = 60%.
+      expect(vt!.maxPct).toBeGreaterThanOrEqual(60);
+    });
+
+    it('is null when no month in the period has any income to divide by', () => {
+      page.setMode('year');
+      page.year.set(2026);
+      state.addTransaction({ date: '2026-01-10', amount: 100, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: '2026-02-10', amount: 100, type: 'expense', accountType: 'cash' });
+      expect(page.vulnerabilityTrend()).toBeNull();
     });
   });
 
@@ -419,6 +515,121 @@ describe('ReportsPage', () => {
     });
   });
 
+  describe('assetAllocation', () => {
+    it('is empty when there are no assets at all', () => {
+      expect(page.assetAllocation()).toEqual({ items: [], total: 0 });
+    });
+
+    it('splits Liquid Cash, Fixed Deposits and Investments principal into shares of the whole', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 700 });
+      // No bankId on the FD - a pure memo, so it doesn't deduct from the
+      // bank balance above (see `addFixedDeposit`), keeping this test's
+      // expected total a simple sum of the three independent pieces.
+      state.addFixedDeposit({
+        amount: 200,
+        percentage: 3,
+        months: 12,
+        startDate: TODAY,
+        status: 'active',
+      });
+      const [bank] = state.state()!.banks;
+      state.addInvestment({ name: 'Tech Stock', toAccountId: bank.id, toAccountType: 'bank', amount: 100, date: TODAY });
+
+      const allocation = page.assetAllocation();
+      expect(allocation.total).toBe(700 + 200 + 100);
+      expect(allocation.items.map((i) => i.name)).toEqual(['Liquid Cash', 'Fixed Deposits', 'Investments']);
+    });
+
+    it('turns the allocation into donut segments summing to a full 100-unit ring', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 500 });
+      const segments = page.assetAllocationDonutSegments();
+      const totalDash = segments.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
+      expect(totalDash).toBe(100);
+    });
+  });
+
+  describe('fixedDepositLedger', () => {
+    it('is empty when there are no fixed deposits', () => {
+      expect(page.fixedDepositLedger()).toEqual([]);
+    });
+
+    it('lists every fixed deposit regardless of status, soonest maturity first', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+      const [bank] = state.state()!.banks;
+      state.addFixedDeposit({
+        bankId: bank.id,
+        amount: 1000,
+        percentage: 3,
+        months: 12,
+        startDate: '2026-01-01',
+        status: 'active',
+      });
+      state.addFixedDeposit({
+        bankId: bank.id,
+        amount: 500,
+        percentage: 2,
+        months: 3,
+        startDate: '2026-01-01',
+        status: 'active',
+      });
+
+      const rows = page.fixedDepositLedger();
+      expect(rows.length).toBe(2);
+      expect(rows[0].months).toBe(3); // matures sooner than the 12-month deposit
+      expect(rows[0].bankName).toBe('Maybank');
+    });
+  });
+
+  describe('stressTest / coverageRatioLabel', () => {
+    it('coverageRatio is null (rendered as "∞") when there are no commitments', () => {
+      state.addTransaction({ date: TODAY, amount: 1000, type: 'income', accountType: 'cash' });
+      page.month.set(THIS_MONTH);
+      expect(page.stressTest().coverageRatio).toBeNull();
+      expect(page.coverageRatioLabel()).toBe('∞');
+    });
+
+    it('computes Fixed Cost Coverage and Discretionary Buffer from income vs. commitment', () => {
+      state.addTransaction({ date: TODAY, amount: 1000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 250, type: 'commitment', accountType: 'cash' });
+      page.month.set(THIS_MONTH);
+
+      const st = page.stressTest();
+      expect(st.coverageRatio).toBe(4); // 1000 / 250
+      expect(st.buffer).toBe(750);
+      expect(page.coverageRatioLabel()).toBe('4.00×');
+    });
+
+    it('projects the Commitment Ratio under each income-shock scenario, null once income drops to zero', () => {
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 100, type: 'commitment', accountType: 'cash' });
+      page.month.set(THIS_MONTH);
+
+      const scenarios = page.stressTest().scenarios;
+      expect(scenarios.map((s) => s.shockPct)).toEqual([10, 20, 30]);
+      // A 100% commitment ratio at full income only gets worse under any income shock.
+      expect(scenarios[0].ratio).toBeGreaterThan(100);
+    });
+  });
+
+  describe('balanceSheet / netWorthLabel', () => {
+    it('splits positive balances/FDs/investments as assets and card debt/overdrafts as liabilities', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 1000 });
+      state.addCard({ name: 'Visa', color: '#3B82F6' });
+      const [visa] = state.state()!.cards;
+      state.addTransaction({ date: TODAY, amount: 300, type: 'expense', accountType: 'card', accountId: visa.id });
+
+      const sheet = page.balanceSheet();
+      expect(sheet.assets.find((a) => a.label === 'Liquid Cash')?.amount).toBe(1000);
+      expect(sheet.liabilities.find((l) => l.label === 'Card Debt')?.amount).toBe(300);
+      expect(sheet.netWorth).toBe(1000 - 300);
+    });
+
+    it('netWorthLabel is arithmetically identical to state.netWorth(), never a second computed figure', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 500 });
+      expect(page.netWorthLabel()).toBe(page.money(state.netWorth()));
+    });
+  });
+
   describe('rendered DOM', () => {
     it('shows the empty state when there are no transactions in the period', () => {
       page.month.set(THIS_MONTH);
@@ -453,15 +664,15 @@ describe('ReportsPage', () => {
       expect(netEl.classList.contains('negative')).toBe(true);
     });
 
-    it('renders a Fixed Commitments Analysis section, separate from Variable Expenses Analysis', () => {
+    it('renders a Fixed Commitments by Category column, separate from Variable Expenses by Category', () => {
       page.month.set(THIS_MONTH);
       state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
       fixture.detectChanges();
 
       const el = fixture.nativeElement as HTMLElement;
-      const headings = Array.from(el.querySelectorAll('.section-head h2')).map((h) => h.textContent?.trim());
-      expect(headings).toContain('Fixed Commitments Analysis');
-      expect(headings).toContain('Variable Expenses Analysis');
+      const subheads = Array.from(el.querySelectorAll('.pl-subhead')).map((h) => h.textContent?.trim());
+      expect(subheads).toContain('Fixed Commitments by Category');
+      expect(subheads).toContain('Variable Expenses by Category');
       expect(el.textContent).toContain('No fixed commitments recorded in this period.');
     });
 
@@ -496,38 +707,24 @@ describe('ReportsPage', () => {
       expect(el.querySelector('.investment-label')?.textContent).toContain('Tech Stock');
     });
 
-    it('shows the Card/Wallet Spending Analysis empty states when neither has any expenses', () => {
+    it('switches Spending by Channel tabs between Bank/Wallet/Card, showing each channel\'s own empty state', () => {
       state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
       page.month.set(THIS_MONTH);
       fixture.detectChanges();
 
       const el = fixture.nativeElement as HTMLElement;
       const headings = Array.from(el.querySelectorAll('.section-head h2')).map((h) => h.textContent?.trim());
-      expect(headings).toContain('Card Spending Analysis');
-      expect(headings).toContain('Wallet Spending Analysis');
-      expect(el.textContent).toContain('No card expenses recorded in this period.');
-      expect(el.textContent).toContain('No wallet expenses recorded in this period.');
-    });
+      expect(headings).toContain('Spending by Channel');
+      expect(el.textContent).toContain('No bank expenses recorded in this period.');
 
-    it('renders a breakdown row per card once card expenses exist', () => {
-      state.addCard({ name: 'Visa', color: '#3B82F6' });
-      const [visa] = state.state()!.cards;
-      state.addTransaction({
-        date: TODAY,
-        amount: 250,
-        type: 'expense',
-        accountType: 'card',
-        accountId: visa.id,
-      });
-      page.month.set(THIS_MONTH);
+      const channelTabs = Array.from(el.querySelectorAll<HTMLButtonElement>('.channel-tab'));
+      channelTabs.find((t) => t.textContent?.includes('Card'))!.click();
       fixture.detectChanges();
-
-      const el = fixture.nativeElement as HTMLElement;
-      expect(el.textContent).toContain('Visa');
-      expect(el.querySelector('.empty-state p')?.textContent).not.toContain('No card expenses');
+      expect(page.spendingChannel()).toBe('card');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('No card expenses recorded in this period.');
     });
 
-    it("shows a category chip under a card once that card's expenses are categorized", () => {
+    it('renders a breakdown row per card once card expenses exist, with a category chip once categorized', () => {
       state.addCard({ name: 'Visa', color: '#3B82F6' });
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
       const [visa] = state.state()!.cards;
@@ -541,11 +738,23 @@ describe('ReportsPage', () => {
         categoryId: groceries.id,
       });
       page.month.set(THIS_MONTH);
+      page.spendingChannel.set('card');
       fixture.detectChanges();
 
       const el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('Visa');
       const chip = el.querySelector('.subcat-chip');
       expect(chip?.textContent).toContain('Groceries');
+    });
+
+    it('renders the Closing Position balance sheet and Net Worth row once accounts exist', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 500 });
+      page.month.set(THIS_MONTH);
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.net-worth-row')).not.toBeNull();
+      expect(el.textContent).toContain('Total Assets');
     });
   });
 });

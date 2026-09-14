@@ -3,26 +3,25 @@ import { provideRouter } from '@angular/router';
 import { DashboardPage } from './dashboard';
 import { StateService } from '../../core/state.service';
 import { createEmptyState } from '../../core/models';
-import { monthKeyOf } from '../../core/format.util';
 
 /** Today's date, reused across tests so "this month" transactions always
- * land in `cashFlowTrend`'s most recent (current-month) bucket regardless
- * of when the suite runs. */
+ * land in `monthlyStats`/`savingsRate`/`categoryPace`'s current-month bucket
+ * regardless of when the suite runs. */
 const TODAY = new Date().toISOString().slice(0, 10);
 
-/** A date in the middle of last month, and one in the middle of last year -
- * for exercising the `categoryPeriod` filter's "Last Month"/"This Year" vs.
- * "everything else" boundaries regardless of when the suite runs. */
-function daysAgoDate(monthsAgo: number): string {
+/** The 1st of the month `monthsAgo` calendar months back - for building
+ * transactions that land in `avgMonthlyBurn`/`categoryPace`'s trailing
+ * (completed-month) window without ever landing in the current month.
+ * Anchored to day 1 to sidestep month-length overflow (e.g. Mar 31 minus one
+ * month isn't Feb 31). */
+function monthsAgoDate(monthsAgo: number): string {
   const d = new Date();
-  d.setDate(1); // avoid month-length overflow (e.g. Mar 31 - 1 month != Feb 31)
+  d.setDate(1);
   d.setMonth(d.getMonth() - monthsAgo);
   return d.toISOString().slice(0, 10);
 }
-const LAST_MONTH = daysAgoDate(1);
-const LAST_YEAR = `${new Date().getFullYear() - 1}-06-15`;
 
-describe('DashboardPage charts', () => {
+describe('DashboardPage', () => {
   let state: StateService;
   let page: DashboardPage;
   let fixture: ComponentFixture<DashboardPage>;
@@ -120,223 +119,263 @@ describe('DashboardPage charts', () => {
     });
   });
 
-  describe('categoryDonutSegments', () => {
-    it('turns this month’s category breakdown into stacked donut arcs summing to a full ring', () => {
-      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
-      state.addCategory({ name: 'Transport', color: '#3B82F6', type: 'expense' });
-      const [groceries, transport] = state.state()!.categories;
+  describe('liquidCash / liquidAccounts / cardAccounts', () => {
+    it('excludes card balances from liquidCash and keeps them out of liquidAccounts', () => {
+      state.addBank({ name: 'Main Bank', color: '#111111', initialCapital: 500 });
+      state.addCard({ name: 'Visa', color: '#222222' });
+      const cardId = state.state()!.cards[0].id;
+      state.addTransaction({ date: TODAY, amount: 100, type: 'expense', accountType: 'card', accountId: cardId });
+      state.addTransaction({ date: TODAY, amount: 50, type: 'expense', accountType: 'cash' });
 
-      state.addTransaction({
-        date: TODAY,
-        amount: 60,
-        type: 'expense',
-        accountType: 'cash',
-        categoryId: groceries.id,
-      });
-      state.addTransaction({
-        date: TODAY,
-        amount: 40,
-        type: 'expense',
-        accountType: 'cash',
-        categoryId: transport.id,
-      });
-
-      const segments = page.categoryDonutSegments();
-      expect(segments.length).toBe(2);
-
-      // Largest slice first (categoryBreakdown sorts descending), starting
-      // at the donut's 12-o'clock offset (25).
-      expect(segments[0].amount).toBe(60);
-      expect(segments[0].dashArray).toBe('60 40');
-      expect(segments[0].offset).toBe(25);
-
-      // Second slice picks up exactly where the first left off.
-      expect(segments[1].amount).toBe(40);
-      expect(segments[1].dashArray).toBe('40 60');
-      expect(segments[1].offset).toBe(25 - 60);
-
-      // The two dash shares always add up to the full 100-unit ring.
-      const totalDash = segments.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
-      expect(totalDash).toBe(100);
-    });
-
-    it('is empty when there are no expenses this month', () => {
-      expect(page.categoryDonutSegments()).toEqual([]);
+      expect(page.liquidCash()).toBe(500 - 50);
+      expect(page.liquidAccounts().some((a) => a.kind === 'card')).toBe(false);
+      expect(page.cardAccounts().length).toBe(1);
+      expect(page.cardAccounts()[0].balance).toBe(-100);
     });
   });
 
-  describe('categoryPeriod filtering', () => {
-    beforeEach(() => {
-      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
-      const groceries = state.state()!.categories[0].id;
-      state.addTransaction({ date: TODAY, amount: 60, type: 'expense', accountType: 'cash', categoryId: groceries });
-      state.addTransaction({
-        date: LAST_MONTH,
-        amount: 40,
-        type: 'expense',
-        accountType: 'cash',
-        categoryId: groceries,
-      });
-      state.addTransaction({
-        date: LAST_YEAR,
-        amount: 25,
-        type: 'expense',
-        accountType: 'cash',
-        categoryId: groceries,
-      });
+  describe('cashSparkline', () => {
+    it('reflects a positive net change over the window and ends with a plottable point', () => {
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 1000 });
+      const bankId = state.state()!.banks[0].id;
+      state.addTransaction({ date: TODAY, amount: 200, type: 'income', accountType: 'bank', accountId: bankId });
+
+      const spark = page.cashSparkline();
+      expect(spark.endPoint).not.toBeNull();
+      expect(spark.deltaPositive).toBe(true);
+      expect(spark.deltaLabel).toContain('200.00');
+      expect(spark.linePath.startsWith('M')).toBe(true);
     });
 
-    it('defaults to This Month and counts only this month’s expenses', () => {
-      expect(page.categoryPeriod()).toBe('this-month');
-      expect(page.categoryBreakdown().total).toBe(60);
+    it('flags a negative delta when liquid cash fell over the window', () => {
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 1000 });
+      const bankId = state.state()!.banks[0].id;
+      state.addTransaction({ date: TODAY, amount: 300, type: 'expense', accountType: 'bank', accountId: bankId });
+
+      const spark = page.cashSparkline();
+      expect(spark.deltaPositive).toBe(false);
+      expect(spark.deltaLabel.startsWith('-')).toBe(true);
     });
 
-    it('Last Month counts only last month’s expenses, not this month’s', () => {
-      page.categoryPeriod.set('last-month');
-      expect(page.categoryBreakdown().total).toBe(40);
-    });
+    it('ignores card transactions - they never affect liquid cash history', () => {
+      state.addCard({ name: 'Visa', color: '#222' });
+      const cardId = state.state()!.cards[0].id;
+      state.addTransaction({ date: TODAY, amount: 500, type: 'expense', accountType: 'card', accountId: cardId });
 
-    it('This Year counts everything since Jan 1 but excludes last year', () => {
-      page.categoryPeriod.set('this-year');
-      // LAST_MONTH only counts toward "this year" if the suite doesn't
-      // happen to run in January (where "last month" is December of last
-      // year) - compute the expectation rather than hardcoding it, so the
-      // test doesn't flake once a year.
-      const lastMonthIsThisYear = LAST_MONTH.slice(0, 4) === String(new Date().getFullYear());
-      expect(page.categoryBreakdown().total).toBe(lastMonthIsThisYear ? 100 : 60);
-    });
-
-    it('All Time counts every expense regardless of date', () => {
-      page.categoryPeriod.set('all-time');
-      expect(page.categoryBreakdown().total).toBe(125);
+      expect(page.cashSparkline().deltaLabel).toContain('0.00');
     });
   });
 
-  describe('cashFlowTrend', () => {
-    it('always returns exactly 6 months, oldest first, ending on the current month', () => {
-      const trend = page.cashFlowTrend();
-      expect(trend.months.length).toBe(6);
-      expect(trend.months[5].key).toBe(monthKeyOf());
+  describe('avgMonthlyBurn / cashRunway', () => {
+    it('reports unknown runway when there is no burn history yet', () => {
+      expect(page.avgMonthlyBurn().monthsCounted).toBe(0);
+      const runway = page.cashRunway();
+      expect(runway.label).toBe('—');
+      expect(runway.band).toBe('unknown');
     });
 
-    it('buckets income, expense, and commitment transactions into the current month and sets max', () => {
-      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
+    it('averages Expense + Commitment over the last 3 completed months, excluding this month', () => {
+      state.addTransaction({ date: monthsAgoDate(1), amount: 300, type: 'expense', accountType: 'cash' });
+      state.addTransaction({ date: monthsAgoDate(2), amount: 200, type: 'commitment', accountType: 'cash' });
+      state.addTransaction({ date: monthsAgoDate(3), amount: 100, type: 'expense', accountType: 'cash' });
+      // This month's own spending must NOT count toward the trailing average.
+      state.addTransaction({ date: TODAY, amount: 999, type: 'expense', accountType: 'cash' });
+
+      const burn = page.avgMonthlyBurn();
+      expect(burn.monthsCounted).toBe(3);
+      expect(burn.amount).toBeCloseTo((300 + 200 + 100) / 3, 5);
+    });
+
+    it('reports "∞" (safe) when average burn is zero but there is trailing history', () => {
+      state.addTransaction({ date: monthsAgoDate(1), amount: 100, type: 'income', accountType: 'cash' });
+      expect(page.avgMonthlyBurn().monthsCounted).toBe(1);
+      expect(page.avgMonthlyBurn().amount).toBe(0);
+      const runway = page.cashRunway();
+      expect(runway.label).toBe('∞');
+      expect(runway.band).toBe('safe');
+    });
+
+    it('reports "0.0" (critical) when liquid cash is already at or below zero', () => {
+      state.addTransaction({ date: monthsAgoDate(1), amount: 500, type: 'expense', accountType: 'cash' });
+      expect(page.liquidCash()).toBeLessThanOrEqual(0);
+      const runway = page.cashRunway();
+      expect(runway.label).toBe('0.0');
+      expect(runway.band).toBe('critical');
+    });
+
+    it('computes months of runway and bands it caution between 1 and 3 months', () => {
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 1000 });
+      const bankId = state.state()!.banks[0].id;
+      state.addTransaction({
+        date: monthsAgoDate(1),
+        amount: 500,
+        type: 'expense',
+        accountType: 'bank',
+        accountId: bankId,
+      });
+      // liquidCash = 1000 - 500 = 500; avg burn = 500 / 1 month = 500 -> 1.0 month of runway.
+      const runway = page.cashRunway();
+      expect(runway.label).toBe('1.0');
+      expect(runway.band).toBe('caution');
+    });
+  });
+
+  describe('cardDebt', () => {
+    it('is zero when no card is in debt (a card in credit does not count)', () => {
+      state.addCard({ name: 'Visa', color: '#111' });
+      const cardId = state.state()!.cards[0].id;
+      state.addTransaction({ date: TODAY, amount: 100, type: 'others-in', accountType: 'card', accountId: cardId });
+
+      expect(page.cardDebt().total).toBe(0);
+      expect(page.cardDebt().lines.length).toBe(0);
+    });
+
+    it('sums every card in debt and shows the worst offenders first, capped at 3 lines', () => {
+      const debts = [50, 300, 100, 10];
+      debts.forEach((_, i) => state.addCard({ name: `Card ${i}`, color: '#111' }));
+      const cards = state.state()!.cards;
+      cards.forEach((c, i) => {
+        state.addTransaction({ date: TODAY, amount: debts[i], type: 'expense', accountType: 'card', accountId: c.id });
+      });
+
+      const debt = page.cardDebt();
+      expect(debt.total).toBe(50 + 300 + 100 + 10);
+      expect(debt.lines.length).toBe(3);
+      expect(debt.lines.map((l) => l.amount)).toEqual([300, 100, 50]);
+    });
+  });
+
+  describe('fixedDepositSummary', () => {
+    it('is null when there are no active fixed deposits', () => {
+      expect(page.fixedDepositSummary()).toBeNull();
+    });
+
+    it('surfaces the soonest-maturing active deposit and totals every active principal', () => {
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 0 });
+      const bankId = state.state()!.banks[0].id;
+      state.addFixedDeposit({ bankId, startDate: TODAY, amount: 1000, percentage: 5, months: 12, status: 'active' });
+      state.addFixedDeposit({ bankId, startDate: TODAY, amount: 500, percentage: 3, months: 1, status: 'active' });
+      // A matured deposit shouldn't count toward the active total or be
+      // eligible as "next maturity".
+      state.addFixedDeposit({ bankId, startDate: TODAY, amount: 2000, percentage: 2, months: 1, status: 'matured' });
+
+      const summary = page.fixedDepositSummary()!;
+      expect(summary).not.toBeNull();
+      expect(summary.count).toBe(2);
+      expect(summary.totalPrincipal).toBe(1500);
+      expect(summary.nextBankName).toBe('Main Bank');
+    });
+  });
+
+  describe('savingsRate', () => {
+    it('has no income this month', () => {
+      const rate = page.savingsRate();
+      expect(rate.hasIncome).toBe(false);
+      expect(rate.segments).toEqual([]);
+    });
+
+    it('splits income into committed/variable/saved shares that sum to a full ring', () => {
+      state.addTransaction({ date: TODAY, amount: 1000, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 300, type: 'commitment', accountType: 'cash' });
       state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
-      state.addTransaction({ date: TODAY, amount: 650, type: 'commitment', accountType: 'cash' });
-      // others-in/others-out (e.g. fixed deposit transactions) shouldn't
-      // count as cash flow - only real income/expense/commitment should.
-      state.addTransaction({ date: TODAY, amount: 9000, type: 'others-in', accountType: 'cash' });
 
-      const trend = page.cashFlowTrend();
-      const current = trend.months[5];
-      expect(current.income).toBe(500);
-      expect(current.expense).toBe(200);
-      expect(current.commitment).toBe(650);
-      expect(trend.max).toBe(650);
-      expect(page.hasCashFlowActivity()).toBe(true);
+      const rate = page.savingsRate();
+      expect(rate.hasIncome).toBe(true);
+      expect(rate.overspent).toBe(false);
+      expect(rate.ratePct).toBeCloseTo(50, 5);
+      const totalDash = rate.segments.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
+      expect(totalDash).toBeCloseTo(100, 5);
     });
 
-    it('reports activity when only commitments are recorded, with no income or expense', () => {
-      state.addTransaction({ date: TODAY, amount: 400, type: 'commitment', accountType: 'cash' });
-      expect(page.hasCashFlowActivity()).toBe(true);
-      expect(page.cashFlowTrend().max).toBe(400);
-    });
+    it('scales the drawn ring down to a full turn (but keeps the real negative rate) when overspent', () => {
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 80, type: 'commitment', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 60, type: 'expense', accountType: 'cash' });
 
-    it('reports no activity when the last 6 months are empty', () => {
-      expect(page.hasCashFlowActivity()).toBe(false);
-      expect(page.cashFlowTrend().max).toBe(0);
-    });
-
-    it('marks the year on the first bar and on every January, but not other months', () => {
-      page.cashFlowRange.set(12);
-      const months = page.cashFlowTrend().months;
-      months.forEach((m, i) => {
-        const isJanuary = new Date(`${m.key}-01T00:00:00`).getMonth() === 0;
-        if (i === 0 || isJanuary) {
-          expect(m.label).toContain("'");
-        } else {
-          expect(m.label).not.toContain("'");
-        }
-      });
-    });
-
-    it('widens or narrows to exactly cashFlowRange() months, still ending on the current month', () => {
-      page.cashFlowRange.set(3);
-      expect(page.cashFlowTrend().months.length).toBe(3);
-      expect(page.cashFlowTrend().months[2].key).toBe(monthKeyOf());
-
-      page.cashFlowRange.set(12);
-      expect(page.cashFlowTrend().months.length).toBe(12);
-      expect(page.cashFlowTrend().months[11].key).toBe(monthKeyOf());
+      const rate = page.savingsRate();
+      expect(rate.overspent).toBe(true);
+      expect(rate.ratePct).toBeCloseTo(-40, 5);
+      const totalDash = rate.segments.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
+      expect(totalDash).toBeCloseTo(100, 5);
     });
   });
 
-  describe('barHeightPercent', () => {
-    it('scales a value against the chart max', () => {
-      expect(page.barHeightPercent(50, 100)).toBe(50);
-      expect(page.barHeightPercent(100, 100)).toBe(100);
+  describe('categoryPace', () => {
+    it('is empty when there are no expense transactions at all', () => {
+      expect(page.categoryPace()).toEqual([]);
     });
 
-    it('returns 0 rather than NaN when max is 0 (no activity at all)', () => {
-      expect(page.barHeightPercent(0, 0)).toBe(0);
+    it('flags a category "new" when it has no trailing baseline yet', () => {
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      const catId = state.state()!.categories[0].id;
+      state.addTransaction({ date: TODAY, amount: 60, type: 'expense', accountType: 'cash', categoryId: catId });
+
+      const pace = page.categoryPace();
+      expect(pace.length).toBe(1);
+      expect(pace[0].band).toBe('new');
+      expect(pace[0].baseline).toBeNull();
+    });
+
+    it('bands a category "over" once this month clears 110% of its trailing average', () => {
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      const catId = state.state()!.categories[0].id;
+      // Baseline: 100/month over the last 3 completed months.
+      state.addTransaction({ date: monthsAgoDate(1), amount: 100, type: 'expense', accountType: 'cash', categoryId: catId });
+      state.addTransaction({ date: monthsAgoDate(2), amount: 100, type: 'expense', accountType: 'cash', categoryId: catId });
+      state.addTransaction({ date: monthsAgoDate(3), amount: 100, type: 'expense', accountType: 'cash', categoryId: catId });
+      // This month so far: well over baseline.
+      state.addTransaction({ date: TODAY, amount: 150, type: 'expense', accountType: 'cash', categoryId: catId });
+
+      const row = page.categoryPace()[0];
+      expect(row.baseline).toBeCloseTo(100, 5);
+      expect(row.pct).toBeCloseTo(150, 5);
+      expect(row.band).toBe('over');
+    });
+
+    it('keeps only the top 4 categories by this month’s spend', () => {
+      for (let i = 0; i < 5; i++) {
+        state.addCategory({ name: `Cat ${i}`, color: '#111', type: 'expense' });
+      }
+      const cats = state.state()!.categories;
+      cats.forEach((c, i) => {
+        state.addTransaction({ date: TODAY, amount: (i + 1) * 10, type: 'expense', accountType: 'cash', categoryId: c.id });
+      });
+
+      expect(page.categoryPace().length).toBe(4);
+      expect(page.categoryPace()[0].current).toBe(50);
+    });
+  });
+
+  describe('recentTransactions / typeAccent', () => {
+    it('keeps only the 5 most recent transactions', () => {
+      for (let i = 0; i < 7; i++) {
+        state.addTransaction({ date: TODAY, amount: i + 1, type: 'expense', accountType: 'cash' });
+      }
+      expect(page.recentTransactions().length).toBe(5);
+    });
+
+    it('colors each transaction type distinctly, with transfers and expense-like types sharing a look', () => {
+      expect(page.typeAccent({ type: 'income' } as any)).toBe('var(--success)');
+      expect(page.typeAccent({ type: 'commitment' } as any)).toBe('var(--commitment)');
+      expect(page.typeAccent({ type: 'others-in' } as any)).toBe('var(--accent)');
+      expect(page.typeAccent({ type: 'others-out' } as any)).toBe('var(--accent)');
+      expect(page.typeAccent({ type: 'expense' } as any)).toBe('var(--danger)');
     });
   });
 
   describe('rendered DOM', () => {
-    it('draws one donut <circle> per category plus the background track', () => {
-      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
-      state.addTransaction({
-        date: TODAY,
-        amount: 60,
-        type: 'expense',
-        accountType: 'cash',
-        categoryId: state.state()!.categories[0].id,
-      });
-      fixture.detectChanges();
-
-      const el = fixture.nativeElement as HTMLElement;
-      const circles = el.querySelectorAll('.donut-svg circle');
-      // 1 background track + 1 category segment.
-      expect(circles.length).toBe(2);
-      const segment = el.querySelector('.donut-segment')!;
-      expect(segment.getAttribute('stroke')).toBe('#EF4444');
-      expect(segment.getAttribute('stroke-dasharray')).toBe('100 0');
-    });
-
-    it('renders 6 cash-flow columns with bars scaled by inline height, including a commitment bar', () => {
-      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
-      state.addTransaction({ date: TODAY, amount: 250, type: 'expense', accountType: 'cash' });
-      state.addTransaction({ date: TODAY, amount: 125, type: 'commitment', accountType: 'cash' });
-      fixture.detectChanges();
-
-      const el = fixture.nativeElement as HTMLElement;
-      const cols = el.querySelectorAll('.cash-flow-col');
-      expect(cols.length).toBe(6);
-
-      const lastCol = cols[5];
-      const incomeBar = lastCol.querySelector('.cash-flow-bar.income') as HTMLElement;
-      const expenseBar = lastCol.querySelector('.cash-flow-bar.expense') as HTMLElement;
-      const commitmentBar = lastCol.querySelector('.cash-flow-bar.commitment') as HTMLElement;
-      expect(incomeBar.style.height).toBe('100%');
-      expect(expenseBar.style.height).toBe('50%');
-      expect(commitmentBar.style.height).toBe('25%');
-    });
-
-    it('shows a Commitment entry in the Cash Flow legend', () => {
-      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
+    it('shows Available Cash in the hero and colors Net This Month green/red', () => {
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 1000 });
       fixture.detectChanges();
       const el = fixture.nativeElement as HTMLElement;
-      expect(el.querySelector('.legend-dot.commitment')).not.toBeNull();
-      expect(el.textContent).toContain('Commitment');
-    });
+      expect(el.querySelector('.hero-num')?.textContent).toContain('1,000.00');
 
-    it('colors the Net This Month stat green when positive and red when negative', () => {
       state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
       state.addTransaction({ date: TODAY, amount: 900, type: 'expense', accountType: 'cash' });
       fixture.detectChanges();
 
-      const stats = fixture.nativeElement.querySelectorAll('.stat .stat-value');
-      const netEl = stats[3] as HTMLElement; // Monthly Income, Monthly Expense, Monthly Commitment, Net This Month
+      const stats = el.querySelectorAll('.stat .stat-value');
+      const netEl = stats[3] as HTMLElement; // Income, Expense, Commitment, Net This Month
       expect(netEl.classList.contains('negative')).toBe(true);
       expect(netEl.classList.contains('positive')).toBe(false);
 
@@ -346,15 +385,87 @@ describe('DashboardPage charts', () => {
       expect(netEl.classList.contains('negative')).toBe(false);
     });
 
-    it('shows the empty state instead of a chart when there is no cash flow activity', () => {
+    it('only draws the runway meter pointer once there is burn history', () => {
       fixture.detectChanges();
-      const el = fixture.nativeElement as HTMLElement;
-      expect(el.querySelector('.cash-flow-chart')).toBeNull();
-      expect(el.textContent).toContain('No income, expenses, or commitments');
+      let el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.meter-pointer')).toBeNull();
+      expect(el.textContent).toContain('Not enough history yet');
+
+      state.addTransaction({ date: monthsAgoDate(1), amount: 100, type: 'expense', accountType: 'cash' });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.meter-pointer')).not.toBeNull();
     });
 
-    it("shows the specific bank's own color next to its name in Recent Transactions", () => {
+    it('shows card debt lines only once a card is actually in debt', () => {
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('No card debt outstanding');
+      expect(el.querySelectorAll('.debt-line').length).toBe(0);
+
+      state.addCard({ name: 'Visa', color: '#2563EB' });
+      const cardId = state.state()!.cards[0].id;
+      state.addTransaction({ date: TODAY, amount: 250, type: 'expense', accountType: 'card', accountId: cardId });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelectorAll('.debt-line').length).toBe(1);
+      expect(el.querySelector('.debt-line')?.textContent).toContain('Visa');
+    });
+
+    it('shows an "Add a Fixed Deposit" link when there are none, and the countdown chip once one is active', () => {
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('No active deposits');
+
+      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 0 });
+      const bankId = state.state()!.banks[0].id;
+      state.addFixedDeposit({ bankId, startDate: TODAY, amount: 1000, percentage: 5, months: 12, status: 'active' });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('Main Bank');
+      expect(el.querySelector('.chip-warn')).not.toBeNull();
+    });
+
+    it('draws one donut segment per savings-rate slice and shows the Overspent chip only when overspent', () => {
+      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 30, type: 'commitment', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 20, type: 'expense', accountType: 'cash' });
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      // 1 background track + 3 segments (committed/variable/saved).
+      expect(el.querySelectorAll('.donut-svg circle').length).toBe(4);
+      expect(el.querySelector('.chip-bad')).toBeNull();
+
+      state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.chip-bad')?.textContent).toContain('Overspent');
+    });
+
+    it('shows a "New" chip for a category pace row with no trailing baseline', () => {
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      state.addTransaction({
+        date: TODAY,
+        amount: 60,
+        type: 'expense',
+        accountType: 'cash',
+        categoryId: state.state()!.categories[0].id,
+      });
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.chip-info')?.textContent).toContain('New');
+    });
+
+    it('shows the empty state instead of a list when there are no transactions', () => {
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.tx-list')).toBeNull();
+      expect(el.textContent).toContain('No transactions recorded yet.');
+    });
+
+    it("shows the specific bank's own color next to its name in Recent Activity", () => {
       state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 1000 });
+      state.addTransaction({ date: TODAY, amount: 50, type: 'expense', accountType: 'bank', accountId: state.state()!.banks[0].id });
       fixture.detectChanges();
 
       const row = fixture.nativeElement.querySelector('.tx-row') as HTMLElement;
@@ -362,50 +473,6 @@ describe('DashboardPage charts', () => {
       // First dot is the category's, second is the account's.
       expect((dots[1] as HTMLElement).style.background).toBe('rgb(37, 99, 235)');
       expect(row.querySelector('.tx-account')?.textContent).toContain('Maybank');
-    });
-
-    it('clicking a Cash Flow range tab switches the chart to that many months', () => {
-      // Some activity is needed, or the chart renders the empty state
-      // instead of `.cash-flow-col` bars regardless of the selected range.
-      state.addTransaction({ date: TODAY, amount: 100, type: 'income', accountType: 'cash' });
-      fixture.detectChanges();
-      const el = fixture.nativeElement as HTMLElement;
-
-      const tabs = Array.from(el.querySelectorAll<HTMLButtonElement>('.range-tab'));
-      expect(tabs.map((t) => t.textContent?.trim())).toEqual(['3M', '6M', '12M']);
-      // 6M is the default.
-      expect(tabs[1].classList.contains('active')).toBe(true);
-
-      tabs[2].click();
-      fixture.detectChanges();
-      expect(page.cashFlowRange()).toBe(12);
-      expect(tabs[2].classList.contains('active')).toBe(true);
-      expect(el.querySelectorAll('.cash-flow-col').length).toBe(12);
-    });
-
-    it('changing the Spending by Category period select re-filters the breakdown', () => {
-      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
-      state.addTransaction({
-        date: LAST_MONTH,
-        amount: 40,
-        type: 'expense',
-        accountType: 'cash',
-        categoryId: state.state()!.categories[0].id,
-      });
-      fixture.detectChanges();
-
-      const el = fixture.nativeElement as HTMLElement;
-      // Nothing this month, so the empty state shows initially.
-      expect(el.querySelector('.breakdown-card')).toBeNull();
-
-      const select = el.querySelector('select.period-select') as HTMLSelectElement;
-      select.value = 'last-month';
-      select.dispatchEvent(new Event('change'));
-      fixture.detectChanges();
-
-      expect(page.categoryPeriod()).toBe('last-month');
-      expect(el.querySelector('.breakdown-card')).not.toBeNull();
-      expect(el.querySelector('.breakdown-amount')?.textContent).toContain('40.00');
     });
   });
 });
