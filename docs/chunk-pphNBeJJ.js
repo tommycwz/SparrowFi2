@@ -1,0 +1,1 @@
+function t(n){if(!(n.status!==`completed`||n.finalAmount===void 0))return n.finalAmount-n.amount}function u(n){let e=t(n);return e!==void 0&&e>0?e:0}function m(n){let e=t(n);return e!==void 0&&e<0?-e:0}export{t as n,u as r,m as t};
