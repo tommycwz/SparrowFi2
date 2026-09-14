@@ -1,37 +1,256 @@
 <div class="stack">
-  <section class="net-worth card">
-    <span class="muted">Net Worth</span>
-    <h1>{{ netWorthLabel() }}</h1>
-    <div class="net-worth-delta" [class.positive]="netWorthDeltaPositive()" [class.negative]="!netWorthDeltaPositive()">
-      {{ netWorthDeltaLabel() }}
+  <!-- ================= Zone 1: Cash Position ================= -->
+  <section class="card hero-card">
+    <div class="hero-top">
+      <div>
+        <span class="muted"
+          >Available Cash<sf-info-tip
+            label="Available Cash"
+            text="Banks + Wallets + Cash + Others, right now. Excludes card balances and money locked in Fixed Deposits or Investments — this is what you can actually spend today."
+        /></span>
+        <h1 class="hero-num">{{ liquidCashLabel() }}</h1>
+        <div class="hero-delta" [class.positive]="cashSparkline().deltaPositive" [class.negative]="!cashSparkline().deltaPositive">
+          {{ cashSparkline().deltaLabel }}
+        </div>
+      </div>
+      <div class="hero-secondary">
+        <span class="muted"
+          >Net Worth<sf-info-tip
+            label="Net Worth"
+            text="Available Cash plus money locked in active Fixed Deposits and Investments — your full financial picture, not just what's spendable today."
+            align="end"
+        /></span>
+        <strong>{{ netWorthLabel() }}</strong>
+      </div>
     </div>
+    <svg class="sparkline" viewBox="0 0 300 60" preserveAspectRatio="none" role="img" aria-label="Available cash, last 30 days">
+      <path class="spark-area" [attr.d]="cashSparkline().areaPath"></path>
+      <path class="spark-line" [attr.d]="cashSparkline().linePath"></path>
+      @if (cashSparkline().endPoint; as p) {
+        <circle class="spark-dot" [attr.cx]="p.x" [attr.cy]="p.y" r="3.2"></circle>
+      }
+    </svg>
   </section>
 
   <div class="card stats-bar">
     <div class="stat">
-      <div class="stat-label muted">Monthly Income</div>
+      <div class="stat-label muted"
+        >Monthly Income<sf-info-tip
+          label="Monthly Income"
+          text="Everything recorded as Income this calendar month. Transfers, investment principal returns and other internal movements aren't counted here."
+      /></div>
       <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(monthlyStats().income) }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label muted">Monthly Expense</div>
+      <div class="stat-label muted"
+        >Monthly Expense<sf-info-tip
+          label="Monthly Expense"
+          text="Variable spending recorded as Expense this month — everyday purchases, not fixed commitments."
+      /></div>
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label muted">Monthly Commitment</div>
+      <div class="stat-label muted"
+        >Monthly Commitment<sf-info-tip
+          label="Monthly Commitment"
+          text="Fixed, recurring obligations this month — rent, loan instalments, insurance, subscriptions. Kept apart from Expense so locked-in spend never hides inside discretionary spend."
+      /></div>
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().commitment) }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label muted">Net This Month</div>
-      <div
-        class="stat-value"
-        [class.positive]="monthlyStats().net >= 0"
-        [class.negative]="monthlyStats().net < 0"
-      >
+      <div class="stat-label muted"
+        >Net This Month<sf-info-tip
+          label="Net This Month"
+          text="Income minus Expense minus Commitment for the current month. Transfers, adjustments and Fixed Deposit/Investment principal moving in or out aren't included."
+          align="end"
+      /></div>
+      <div class="stat-value" [class.positive]="monthlyStats().net >= 0" [class.negative]="monthlyStats().net < 0">
         {{ netStatLabel() }}
       </div>
     </div>
   </div>
 
+  <!-- ================= Zone 2: Short-Term Liquidity ================= -->
+  <section>
+    <div class="section-head">
+      <h2>Short-Term Liquidity</h2>
+    </div>
+    <div class="liquidity-grid">
+      <div class="card mini-card">
+        <span class="mini-label muted"
+          >Cash Runway<sf-info-tip
+            label="Cash Runway"
+            text="Available Cash ÷ your average monthly Expense + Commitment over the last 3 completed months — roughly how many months your current cash would last if income stopped."
+        /></span>
+        <div class="mini-value">
+          {{ cashRunway().label }}<span class="mini-unit muted">&nbsp;mo</span>
+        </div>
+        <div class="meter-track">
+          <div class="meter-zone" style="width: 16.7%; background: var(--danger)"></div>
+          <div class="meter-zone" style="width: 33.3%; background: var(--warning)"></div>
+          <div class="meter-zone" style="width: 50%; background: var(--success)"></div>
+          @if (cashRunway().band !== 'unknown') {
+            <div class="meter-pointer" [style.left.%]="cashRunway().pointerPercent"></div>
+          }
+        </div>
+        <div class="meter-scale muted"><span>0</span><span>1</span><span>3</span><span>6+ mo</span></div>
+        @if (cashRunway().band !== 'unknown') {
+          <span class="mini-cap muted">at your {{ cashRunway().burnMonthsCounted }}-month average burn</span>
+        } @else {
+          <span class="mini-cap muted">Not enough history yet</span>
+        }
+      </div>
+
+      <div class="card mini-card">
+        <span class="mini-label muted"
+          >Card Debt Outstanding<sf-info-tip
+            label="Card Debt Outstanding"
+            text="The total you currently owe across all credit cards — the sum of every card balance that's negative."
+        /></span>
+        @if (cardDebt().total > 0) {
+          <div class="mini-value negative">{{ money(cardDebt().total) }}</div>
+          <div class="debt-lines">
+            @for (l of cardDebt().lines; track l.id) {
+              <div class="debt-line">
+                <span class="debt-line-label"><span class="acc-dot" [style.background]="l.color"></span>{{ l.name }}</span>
+                <b>{{ money(l.amount) }}</b>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="mini-value positive">{{ money(0) }}</div>
+          <span class="mini-cap muted">No card debt outstanding</span>
+        }
+      </div>
+
+      <div class="card mini-card">
+        <span class="mini-label muted"
+          >Next Maturity<sf-info-tip
+            label="Next Maturity"
+            text="The active Fixed Deposit that matures soonest, and what it will pay out (principal + interest) on that date."
+            align="end"
+        /></span>
+        @if (fixedDepositSummary(); as fd) {
+          <div class="mini-value">
+            {{ fd.nextBankName }}
+            <span class="chip chip-warn">{{ fd.nextMaturityCountdown }}</span>
+          </div>
+          <span class="mini-cap muted">{{ fd.nextMaturityDate }} · payout {{ money(fd.nextMaturityValue) }}</span>
+        } @else {
+          <div class="mini-value muted">No active deposits</div>
+          <a routerLink="/fixed-deposits" class="mini-cap link">Add a Fixed Deposit</a>
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Zone 3: Spending Pulse ================= -->
+  <section>
+    <div class="section-head">
+      <h2>Spending Pulse</h2>
+    </div>
+    <div class="pulse-grid">
+      <div class="card pulse-card">
+        <h3 class="widget-title"
+          >Savings Rate<sf-info-tip
+            label="Savings Rate"
+            text="This month's Income split into what's fixed (Committed), what's flexible (Variable), and what's left over (Saved). The percentage in the middle is Saved ÷ Income."
+        /></h3>
+        @if (savingsRate().hasIncome) {
+          <div class="ring-row">
+            <div class="donut-wrap" [class.overspent]="savingsRate().overspent">
+              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Savings rate this month">
+                <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+                @for (seg of savingsRate().segments; track seg.key) {
+                  <circle
+                    cx="21"
+                    cy="21"
+                    r="15.91549430919"
+                    fill="transparent"
+                    [attr.stroke]="seg.color"
+                    [attr.stroke-dasharray]="seg.dashArray"
+                    [attr.stroke-dashoffset]="seg.offset"
+                    class="donut-segment"
+                  />
+                }
+              </svg>
+              <div class="donut-center">
+                <span class="donut-center-value">{{ pct0(savingsRate().ratePct) }}%</span>
+                <span class="donut-center-label muted">{{ savingsRate().overspent ? 'overspent' : 'saved' }}</span>
+              </div>
+            </div>
+            <div class="ring-legend">
+              <div class="legend-row">
+                <span class="dot" style="background: var(--commitment)"></span>Committed<span class="amt">{{ money(savingsRate().committedAmt) }}</span>
+              </div>
+              <div class="legend-row">
+                <span class="dot" style="background: var(--danger)"></span>Variable<span class="amt">{{ money(savingsRate().variableAmt) }}</span>
+              </div>
+              <div class="legend-row">
+                <span class="dot" style="background: var(--success)"></span>Saved<span class="amt">{{ money(savingsRate().savedAmt) }}</span>
+              </div>
+              @if (savingsRate().overspent) {
+                <span class="chip chip-bad">Overspent this month</span>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="empty-state">
+            <sf-icon name="trending-up" [size]="28" />
+            <p>No income recorded this month yet.</p>
+          </div>
+        }
+      </div>
+
+      <div class="card pulse-card">
+        <h3 class="widget-title"
+          >Category Pace<sf-info-tip
+            label="Category Pace"
+            text="Your top spending categories this month, compared to each one's own average over the last 3 months — not a fixed budget, just your own recent normal."
+            align="end"
+          /> <span class="widget-sub muted">this month vs {{ trailingMonthsCounted() }}-mo avg</span></h3>
+        @if (categoryPace().length === 0) {
+          <div class="empty-state">
+            <sf-icon name="tag" [size]="28" />
+            <p>No expenses recorded this month yet.</p>
+          </div>
+        } @else {
+          <div class="pace-list">
+            @for (row of categoryPace(); track row.id) {
+              <div class="pace-row">
+                <span class="pace-name" [title]="row.name">{{ row.name }}</span>
+                <div class="pace-track" [class.dashed]="row.band === 'new'">
+                  @if (row.band !== 'new') {
+                    <div
+                      class="pace-fill"
+                      [style.width.%]="paceFillPercent(row)"
+                      [class.band-under]="row.band === 'under'"
+                      [class.band-on]="row.band === 'on'"
+                      [class.band-over]="row.band === 'over'"
+                    ></div>
+                    <div class="pace-mark"></div>
+                  }
+                </div>
+                @if (row.band === 'new') {
+                  <span class="chip chip-info">New</span>
+                } @else {
+                  <span
+                    class="pace-pct"
+                    [class.band-under]="row.band === 'under'"
+                    [class.band-on]="row.band === 'on'"
+                    [class.band-over]="row.band === 'over'"
+                    >{{ pct0(row.pct) }}%</span
+                  >
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Zone 4: Accounts ================= -->
   <section>
     <div class="section-head">
       <h2>Accounts</h2>
@@ -45,171 +264,41 @@
         <a routerLink="/accounts" class="btn btn-primary">Add an Account</a>
       </div>
     } @else {
-      <div class="account-grid">
-        @for (a of state.accountBalances(); track a.kind + a.id) {
-          <div class="account-card card">
-            <div class="acc-header">
-              <span class="acc-dot" [style.background]="a.color"></span>
-              <span class="acc-name">{{ a.name }}</span>
-            </div>
-            <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
-          </div>
-        }
-      </div>
-    }
-  </section>
-
-  <section>
-    <div class="section-head">
-      <h2>Cash Flow</h2>
-      <div class="range-tabs" role="group" aria-label="Cash flow range">
-        @for (r of cashFlowRangeOptions; track r) {
-          <button
-            type="button"
-            class="range-tab"
-            [class.active]="cashFlowRange() === r"
-            (click)="cashFlowRange.set(r)"
-          >
-            {{ r }}M
-          </button>
-        }
-      </div>
-    </div>
-
-    @if (!hasCashFlowActivity()) {
-      <div class="empty-state card">
-        <sf-icon name="bar-chart" [size]="28" />
-        <p>No income, expenses, or commitments in the last {{ cashFlowTrend().months.length }} months yet.</p>
-      </div>
-    } @else {
-      <div class="card cash-flow-card">
-        <div class="cash-flow-legend">
-          <span class="legend-item"><span class="legend-dot income"></span>Income</span>
-          <span class="legend-item"><span class="legend-dot expense"></span>Expense</span>
-          <span class="legend-item"><span class="legend-dot commitment"></span>Commitment</span>
-        </div>
-        <div class="cash-flow-chart">
-          @for (m of cashFlowTrend().months; track m.key) {
-            <div class="cash-flow-col">
-              <div class="cash-flow-bars">
-                <div
-                  class="cash-flow-bar income"
-                  [style.height.%]="barHeightPercent(m.income, cashFlowTrend().max)"
-                  [attr.title]="'Income: ' + money(m.income)"
-                ></div>
-                <div
-                  class="cash-flow-bar expense"
-                  [style.height.%]="barHeightPercent(m.expense, cashFlowTrend().max)"
-                  [attr.title]="'Expense: ' + money(m.expense)"
-                ></div>
-                <div
-                  class="cash-flow-bar commitment"
-                  [style.height.%]="barHeightPercent(m.commitment, cashFlowTrend().max)"
-                  [attr.title]="'Commitment: ' + money(m.commitment)"
-                ></div>
+      @if (liquidAccounts().length > 0) {
+        <span class="acct-group-label muted">Assets</span>
+        <div class="account-grid">
+          @for (a of liquidAccounts(); track a.kind + a.id) {
+            <div class="account-card card asset-card">
+              <div class="acc-header">
+                <span class="acc-dot" [style.background]="a.color"></span>
+                <span class="acc-name">{{ a.name }}</span>
               </div>
-              <span class="cash-flow-label muted">{{ m.label }}</span>
+              <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
             </div>
           }
         </div>
-      </div>
+      }
+      @if (cardAccounts().length > 0) {
+        <span class="acct-group-label muted">Liabilities</span>
+        <div class="account-grid">
+          @for (a of cardAccounts(); track a.kind + a.id) {
+            <div class="account-card card liab-card">
+              <div class="acc-header">
+                <span class="acc-dot" [style.background]="a.color"></span>
+                <span class="acc-name">{{ a.name }}</span>
+              </div>
+              <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
+            </div>
+          }
+        </div>
+      }
     }
   </section>
 
-  <div class="dash-grid">
-    <section>
-      <div class="section-head">
-        <h2>Spending by Category</h2>
-        <select
-          class="period-select"
-          [ngModel]="categoryPeriod()"
-          (ngModelChange)="categoryPeriod.set($event)"
-          aria-label="Spending by category period"
-        >
-          @for (p of categoryPeriodOptions; track p) {
-            <option [value]="p">{{ categoryPeriodLabels[p] }}</option>
-          }
-        </select>
-      </div>
-
-      @if (categoryBreakdown().items.length === 0) {
-        <div class="empty-state card">
-          <sf-icon name="tag" [size]="28" />
-          <p>{{ categoryPeriodEmptyText() }}</p>
-        </div>
-      } @else {
-        <div class="card breakdown-card">
-          <div class="donut-wrap">
-            <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Spending by category">
-              <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-              @for (seg of categoryDonutSegments(); track seg.id) {
-                <circle
-                  cx="21"
-                  cy="21"
-                  r="15.91549430919"
-                  fill="transparent"
-                  [attr.stroke]="seg.color"
-                  [attr.stroke-dasharray]="seg.dashArray"
-                  [attr.stroke-dashoffset]="seg.offset"
-                  class="donut-segment"
-                />
-              }
-            </svg>
-            <div class="donut-center">
-              <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(categoryBreakdown().total) }}</span>
-              <span class="donut-center-label muted">spent</span>
-            </div>
-          </div>
-          <div class="breakdown-list">
-            @for (c of categoryBreakdown().items; track c.id) {
-              <div class="breakdown-row">
-                <div class="breakdown-top">
-                  <span class="breakdown-dot" [style.background]="c.color"></span>
-                  <span class="breakdown-name">{{ c.name }}</span>
-                  <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
-                </div>
-                <div class="breakdown-bar-track">
-                  <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-      }
-    </section>
-
-    <section>
-      <div class="section-head">
-        <h2>Fixed Deposits</h2>
-        <a routerLink="/fixed-deposits" class="muted link">Manage</a>
-      </div>
-
-      @if (fixedDepositSummary(); as fd) {
-        <div class="card fd-summary">
-          <div class="fd-block">
-            <span class="muted">Total Locked In</span>
-            <div class="fd-total-value">{{ money(fd.totalPrincipal) }}</div>
-            <span class="muted fd-count">{{ fd.count }} active deposit{{ fd.count === 1 ? '' : 's' }}</span>
-          </div>
-          <div class="fd-block">
-            <span class="muted">Next Maturity</span>
-            <div class="fd-next-bank">{{ fd.nextBankName }}</div>
-            <div class="fd-next-date muted">{{ fd.nextMaturityDate }} · {{ money(fd.nextMaturityValue) }}</div>
-          </div>
-        </div>
-      } @else {
-        <div class="empty-state card">
-          <sf-icon name="layers" [size]="28" />
-          <p>No active fixed deposits.</p>
-          <a routerLink="/fixed-deposits" class="btn btn-primary">Add a Fixed Deposit</a>
-        </div>
-      }
-    </section>
-  </div>
-
+  <!-- ================= Zone 5: Recent Activity ================= -->
   <section>
     <div class="section-head">
-      <h2>Recent Transactions</h2>
+      <h2>Recent Activity</h2>
       <a routerLink="/transactions" class="muted link">See all</a>
     </div>
 
@@ -223,6 +312,7 @@
       <div class="card tx-list">
         @for (t of recentTransactions(); track t.id) {
           <div class="tx-row">
+            <div class="tx-accent" [style.background]="typeAccent(t)"></div>
             <div class="tx-date-badge">
               <div class="day">{{ dateBadge(t.date).day }}</div>
               <div class="mon">{{ dateBadge(t.date).month }}</div>

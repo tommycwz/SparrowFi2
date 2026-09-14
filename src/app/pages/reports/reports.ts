@@ -2,10 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
-import { CURRENCIES, InvestmentStatus, Transaction, TransactionType } from '../../core/models';
+import { CURRENCIES, FixedDepositStatus, InvestmentStatus, Transaction, TransactionType } from '../../core/models';
 import { investmentGainValue, investmentLossValue } from '../../core/investment.util';
+import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
 import { formatAmountNumber, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
+import { InfoTipComponent } from '../../shared/info-tip';
 
 export type ReportMode = 'month' | 'year' | 'range';
 
@@ -23,9 +25,9 @@ interface DonutSegment extends CategorySlice {
 }
 
 interface AccountSpendingSlice extends CategorySlice {
-  /** This card/wallet's own expenses broken down by category - "what did I
-   * actually buy with this card" - using the same top-N-then-"Other" rule
-   * as every other breakdown in this report. */
+  /** This account's own expenses broken down by category - "what did I
+   * actually buy with this account" - using the same top-N-then-"Other"
+   * rule as every other breakdown in this report. */
   categories: CategorySlice[];
 }
 
@@ -34,7 +36,18 @@ interface MonthFlow {
   label: string;
   income: number;
   expense: number;
+  commitment: number;
 }
+
+/** The three account types Spending by Channel tabs between - Bank now
+ * included alongside Card and Wallet (previously the only two), so every
+ * channel that can pay for an Expense/Commitment gets the same per-account
+ * breakdown instead of Bank spend only showing up folded into the
+ * category-level analyses above it. */
+export const SPENDING_CHANNEL_OPTIONS = ['bank', 'wallet', 'card'] as const;
+export type SpendingChannel = (typeof SPENDING_CHANNEL_OPTIONS)[number];
+const SPENDING_CHANNEL_LABELS: Record<SpendingChannel, string> = { bank: 'Bank', wallet: 'Wallet', card: 'Card' };
+const SPENDING_CHANNEL_ICONS: Record<SpendingChannel, string> = { bank: 'bank', wallet: 'wallet', card: 'card' };
 
 /** One stacked bar's worth of drawing data for the Investments chart - see
  * `investmentBreakdown` for how the three segments are derived. */
@@ -57,6 +70,42 @@ interface InvestmentBar {
   total: number;
 }
 
+type AllocationSlice = CategorySlice;
+
+interface FdLedgerRow {
+  id: string;
+  bankName: string;
+  principal: number;
+  percentage: number;
+  months: number;
+  status: FixedDepositStatus;
+  maturityDate: string;
+  maturityValue: number;
+}
+
+interface VulnerabilityDot {
+  x: number;
+  y: number;
+}
+
+interface VulnerabilityTrend {
+  width: number;
+  height: number;
+  commitmentPath: string;
+  variablePath: string;
+  commitmentDots: VulnerabilityDot[];
+  variableDots: VulnerabilityDot[];
+  guidelineY: number;
+  maxPct: number;
+  labels: { x: number; text: string; show: boolean }[];
+}
+
+interface ShockScenario {
+  shockPct: number;
+  hypotheticalIncome: number;
+  ratio: number | null;
+}
+
 const CATEGORY_COLOR_FALLBACK = '#94A3B8';
 const OTHER_SLICE_COLOR = '#78716C';
 /** How many individual categories to break out in an analysis section
@@ -71,6 +120,12 @@ const DONUT_CIRCUMFERENCE = 100;
  * than rendered as an unreadable wall of bars - the stats and analyses
  * above it still cover the full selected range regardless. */
 const MAX_CHART_MONTHS = 36;
+/** The classic "needs" guideline from the 50/30/20 budgeting rule - the
+ * reference line the Structural Vulnerability trend is drawn against. */
+const COMMITMENT_GUIDELINE_PCT = 50;
+/** Income-shock percentages the stress-test scenario table checks a
+ * period's Commitment Ratio against. */
+const SHOCK_SCENARIOS = [10, 20, 30];
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -110,7 +165,7 @@ function monthLabel(key: string, style: 'long' | 'short' = 'long'): string {
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, IconComponent, InfoTipComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './reports.html',
   styleUrl: './reports.scss',
@@ -231,6 +286,24 @@ export class ReportsPage {
     return CURRENCIES.find((c) => c.value === currency)?.symbol ?? '';
   });
 
+  /** Savings Rate / Commitment Ratio / Variable Ratio for the selected
+   * period - all `null` when there's no income to divide by, rather than
+   * a fabricated 0% or a signed infinity. Together with `totals()` these
+   * are what the Executive Summary and the Structural Vulnerability
+   * section are built from - see the Formula & Filter section of the
+   * redesign blueprint this implements. */
+  readonly ratios = computed<{ savingsRate: number | null; commitmentRatio: number | null; variableRatio: number | null }>(
+    () => {
+      const { income, expense, commitment, net } = this.totals();
+      if (income <= 0) return { savingsRate: null, commitmentRatio: null, variableRatio: null };
+      return {
+        savingsRate: (net / income) * 100,
+        commitmentRatio: (commitment / income) * 100,
+        variableRatio: (expense / income) * 100,
+      };
+    },
+  );
+
   // ----- Income / Expense analysis --------------------------------------------
 
   /** Sorts a set of named/colored amount rows largest-first, collapses
@@ -301,9 +374,9 @@ export class ReportsPage {
 
   /** Groups an arbitrary set of already-filtered expense transactions by
    * category - the same shape `categoryBreakdownFor` produces for the whole
-   * period, but reusable for a subset (a single card's transactions, say) so
-   * the per-account breakdown below can show "which categories did this
-   * card's spending actually go to" alongside the account totals. */
+   * period, but reusable for a subset (a single account's transactions, say)
+   * so the per-channel breakdown below can show "which categories did this
+   * account's spending actually go to" alongside the account totals. */
   private categorySlicesFor(txns: Transaction[]): CategorySlice[] {
     const s = this.state.state();
     if (!s) return [];
@@ -322,24 +395,24 @@ export class ReportsPage {
     return this.summarizeSlices(rows).items;
   }
 
-  /** Same idea as `categoryBreakdownFor`, but for "which specific card/wallet
-   * is this money coming out of" rather than "what was it spent on" - both
-   * Expense and Commitment transactions count (a BNPL installment on a card
-   * is still money leaving that card), so a card's own spending analysis
-   * doesn't include incoming refunds/transfers ('others-in'/'others-out')
-   * routed through the same card. Bank spending isn't broken out the same
-   * way since Expenses/Commitments Analysis above already cover total spend
-   * by category regardless of which account paid for it, and Cash/Others
-   * have no individually-named accounts to split by. Each resulting slice
+  /** Same idea as `categoryBreakdownFor`, but for "which specific bank/card/
+   * wallet is this money coming out of" rather than "what was it spent on" -
+   * both Expense and Commitment transactions count (a BNPL installment on a
+   * card is still money leaving that card), so a channel's own spending
+   * analysis doesn't include incoming refunds/transfers ('others-in'/
+   * 'others-out') routed through the same account. Bank is included
+   * alongside Card and Wallet (see `SPENDING_CHANNEL_OPTIONS`) so all three
+   * channels a transaction can be paid from get the same per-account
+   * breakdown, tabbed together in Spending by Channel. Each resulting slice
    * also carries its own category breakdown (via `categorySlicesFor`), so
-   * the report can show what a card was actually spent on, not just how
+   * the report can show what an account was actually spent on, not just how
    * much. */
   private accountSpendingBreakdownFor(
-    accountType: 'card' | 'wallet',
+    accountType: SpendingChannel,
   ): { items: AccountSpendingSlice[]; total: number } {
     const s = this.state.state();
     if (!s) return { items: [], total: 0 };
-    const list = accountType === 'card' ? s.cards : s.wallets;
+    const list = accountType === 'card' ? s.cards : accountType === 'wallet' ? s.wallets : s.banks;
 
     const byAccount = new Map<string, Transaction[]>();
     for (const t of this.filteredTransactions()) {
@@ -392,8 +465,29 @@ export class ReportsPage {
     return { items, total };
   }
 
-  readonly cardSpendingAnalysis = computed(() => this.accountSpendingBreakdownFor('card'));
+  readonly bankSpendingAnalysis = computed(() => this.accountSpendingBreakdownFor('bank'));
   readonly walletSpendingAnalysis = computed(() => this.accountSpendingBreakdownFor('wallet'));
+  readonly cardSpendingAnalysis = computed(() => this.accountSpendingBreakdownFor('card'));
+
+  /** Which of the three Spending by Channel tabs is active - defaults to
+   * Bank since it's usually where the most volume flows. */
+  readonly spendingChannel = signal<SpendingChannel>('bank');
+  readonly spendingChannelOptions = SPENDING_CHANNEL_OPTIONS;
+  readonly spendingChannelLabels = SPENDING_CHANNEL_LABELS;
+  readonly spendingChannelIcons = SPENDING_CHANNEL_ICONS;
+
+  readonly activeChannelAnalysis = computed(() => {
+    switch (this.spendingChannel()) {
+      case 'bank':
+        return this.bankSpendingAnalysis();
+      case 'wallet':
+        return this.walletSpendingAnalysis();
+      case 'card':
+        return this.cardSpendingAnalysis();
+    }
+  });
+
+  readonly activeChannelDonutSegments = computed(() => this.toDonutSegments(this.activeChannelAnalysis()));
 
   private toDonutSegments(breakdown: { items: CategorySlice[] }): DonutSegment[] {
     let cumulative = 0;
@@ -408,13 +502,12 @@ export class ReportsPage {
   readonly incomeDonutSegments = computed(() => this.toDonutSegments(this.incomeAnalysis()));
   readonly expenseDonutSegments = computed(() => this.toDonutSegments(this.expenseAnalysis()));
   readonly commitmentDonutSegments = computed(() => this.toDonutSegments(this.commitmentAnalysis()));
-  readonly cardSpendingDonutSegments = computed(() => this.toDonutSegments(this.cardSpendingAnalysis()));
-  readonly walletSpendingDonutSegments = computed(() => this.toDonutSegments(this.walletSpendingAnalysis()));
 
-  // ----- Monthly cash flow (range/year views only) ----------------------------
-  // Deliberately a two-series (income/expense) chart, same as Dashboard's
-  // Cash Flow widget - Commitment isn't folded in as a third series here;
-  // `totals().commitment` and the stats bar above still account for it.
+  // ----- Monthly cash flow + Structural Vulnerability (range/year only) ------
+  // A three-series chart - Commitment now gets its own bar/color alongside
+  // Income and Expense (previously two-series only), matching the totals
+  // already shown above it and the trend `vulnerabilityTrend` is derived
+  // from below.
 
   readonly monthlyBreakdown = computed<{ months: MonthFlow[]; max: number }>(() => {
     if (!this.hasMonthlyChart()) return { months: [], max: 0 };
@@ -432,27 +525,92 @@ export class ReportsPage {
       cursor = shiftMonthKey(cursor, 1);
     }
 
-    const buckets = new Map<string, { income: number; expense: number }>(
-      keys.map((k) => [k, { income: 0, expense: 0 }]),
+    const buckets = new Map<string, { income: number; expense: number; commitment: number }>(
+      keys.map((k) => [k, { income: 0, expense: 0, commitment: 0 }]),
     );
     for (const t of s?.transactions ?? []) {
       const bucket = buckets.get(t.date.slice(0, 7));
       if (!bucket) continue;
       if (t.type === 'income') bucket.income += t.amount;
       else if (t.type === 'expense') bucket.expense += t.amount;
+      else if (t.type === 'commitment') bucket.commitment += t.amount;
     }
 
     const months = keys.map((key) => {
       const b = buckets.get(key)!;
-      return { key, label: monthLabel(key, 'short'), income: b.income, expense: b.expense };
+      return { key, label: monthLabel(key, 'short'), income: b.income, expense: b.expense, commitment: b.commitment };
     });
-    const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense]));
+    const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense, m.commitment]));
     return { months, max };
   });
 
   barHeightPercent(value: number, max: number): number {
     return max > 0 ? (value / max) * 100 : 0;
   }
+
+  /** Commitment Ratio and Variable Ratio for each month in
+   * `monthlyBreakdown()`, drawn as a two-line chart against the classic
+   * 50% "needs" guideline - the widget that answers "are fixed commitments
+   * quietly creeping up," which a single month's snapshot can never show.
+   * `null` (no chart, or no month has any income to divide by) rather than
+   * an empty/misleading chart. A month with no income that period draws no
+   * point on either line instead of a fabricated 0% or a division error. */
+  readonly vulnerabilityTrend = computed<VulnerabilityTrend | null>(() => {
+    const { months } = this.monthlyBreakdown();
+    if (months.length < 2) return null;
+
+    const rows = months.map((m) => ({
+      label: m.label,
+      commitmentPct: m.income > 0 ? (m.commitment / m.income) * 100 : null,
+      variablePct: m.income > 0 ? (m.expense / m.income) * 100 : null,
+    }));
+    const values = rows.flatMap((r) => [r.commitmentPct, r.variablePct]).filter((v): v is number => v !== null);
+    if (values.length === 0) return null;
+
+    const maxPct = Math.max(COMMITMENT_GUIDELINE_PCT + 10, Math.ceil(Math.max(...values) / 10) * 10);
+    const width = 600;
+    const height = 170;
+    const padX = 30;
+    const padTop = 14;
+    const padBottom = 26;
+    const innerW = width - padX * 2;
+    const innerH = height - padTop - padBottom;
+    const stepX = rows.length > 1 ? innerW / (rows.length - 1) : 0;
+    const xFor = (i: number) => padX + i * stepX;
+    const yFor = (pct: number) => padTop + innerH - (pct / maxPct) * innerH;
+
+    const toPath = (vals: (number | null)[]) => {
+      let d = '';
+      vals.forEach((v, i) => {
+        if (v === null) return;
+        d += `${d ? ' L' : 'M'}${xFor(i).toFixed(1)},${yFor(v).toFixed(1)}`;
+      });
+      return d;
+    };
+    const toDots = (vals: (number | null)[]) =>
+      vals.flatMap((v, i) => (v === null ? [] : [{ x: xFor(i), y: yFor(v) }]));
+
+    // Past a dozen months every label can't fit without overlapping - thin
+    // them out to roughly 8 evenly-spaced labels (always including the
+    // last month) rather than rendering an unreadable smear of text.
+    const labelStep = rows.length <= 12 ? 1 : Math.ceil(rows.length / 8);
+
+    return {
+      width,
+      height,
+      commitmentPath: toPath(rows.map((r) => r.commitmentPct)),
+      variablePath: toPath(rows.map((r) => r.variablePct)),
+      commitmentDots: toDots(rows.map((r) => r.commitmentPct)),
+      variableDots: toDots(rows.map((r) => r.variablePct)),
+      guidelineY: yFor(COMMITMENT_GUIDELINE_PCT),
+      maxPct,
+      labels: rows.map((r, i) => ({
+        x: xFor(i),
+        text: r.label,
+        show: i % labelStep === 0 || i === rows.length - 1,
+      })),
+    };
+  });
 
   // ----- Investments -----------------------------------------------------------
   // Deliberately every investment regardless of the period filter above (an
@@ -487,12 +645,119 @@ export class ReportsPage {
     return { bars, max };
   });
 
-  // ----- Current asset balances ------------------------------------------------
-  // Deliberately today's live balances (via `state.accountBalances()`), not
-  // recomputed as of the report period's end date - "current" means now,
-  // same account snapshot the Dashboard and Accounts pages show, so this
-  // section always answers "what do I actually have right now" alongside
-  // the period-scoped analysis above it.
+  // ----- Portfolio & Asset Allocation -------------------------------------------
+  // Deliberately today's live figures (`state`'s own signals), not
+  // recomputed as of the report period's end date - same "current, not
+  // period-scoped" reasoning as Investments and Current Asset Balances.
+
+  /** Gross assets - Liquid Cash (every non-card account balance, floored at
+   * 0 so an overdrawn total doesn't draw as a negative pie slice),
+   * Fixed Deposits and Investments principal - split into shares of the
+   * whole. The first place in the app that visualizes overall composition
+   * rather than a flat list of balances. */
+  readonly assetAllocation = computed<{ items: AllocationSlice[]; total: number }>(() => {
+    const liquid = Math.max(
+      0,
+      this.state
+        .accountBalances()
+        .filter((a) => a.kind !== 'card')
+        .reduce((sum, a) => sum + a.balance, 0),
+    );
+    const fd = this.state.activeFixedDepositTotal();
+    const investments = this.state.activeInvestmentTotal();
+    const rows = [
+      { id: 'liquid', name: 'Liquid Cash', color: 'var(--accent)', amount: liquid },
+      { id: 'fd', name: 'Fixed Deposits', color: 'var(--warning)', amount: fd },
+      { id: 'investments', name: 'Investments', color: 'var(--investment)', amount: investments },
+    ].filter((r) => r.amount > 0);
+    const total = rows.reduce((sum, r) => sum + r.amount, 0);
+    return { items: rows.map((r) => ({ ...r, percent: total > 0 ? (r.amount / total) * 100 : 0 })), total };
+  });
+
+  readonly assetAllocationDonutSegments = computed(() => this.toDonutSegments(this.assetAllocation()));
+
+  /** Every Fixed Deposit on record (not just active ones - matured and
+   * withdrawn deposits stay visible as a record of what happened), soonest
+   * maturity first. Previously Fixed Deposits had no dedicated Report
+   * section at all beyond being folded into the account grid. */
+  readonly fixedDepositLedger = computed<FdLedgerRow[]>(() => {
+    const s = this.state.state();
+    if (!s) return [];
+    return [...s.fixedDeposits]
+      .sort((a, b) => fdMaturityDate(a).localeCompare(fdMaturityDate(b)))
+      .map((fd) => ({
+        id: fd.id,
+        bankName: s.banks.find((b) => b.id === fd.bankId)?.name ?? '—',
+        principal: fd.amount,
+        percentage: fd.percentage,
+        months: fd.months,
+        status: fd.status,
+        maturityDate: fdMaturityDate(fd),
+        maturityValue: fdMaturityValue(fd),
+      }));
+  });
+
+  // ----- Structural Vulnerability / Stress Test ---------------------------------
+
+  /** Fixed Cost Coverage (Income ÷ Commitment, "how many times over does
+   * income cover what's already spoken for") and Discretionary Buffer
+   * (Income − Commitment, the cash left before variable spending even
+   * starts) for the selected period, plus a table of what the Commitment
+   * Ratio would look like under a hypothetical income shock with spending
+   * unchanged - the explicit "structural vulnerability testing" this
+   * report is meant to support. `coverageRatio: null` reads as "∞" (fully
+   * uncommitted) rather than a division by zero. */
+  readonly stressTest = computed<{ coverageRatio: number | null; buffer: number; scenarios: ShockScenario[] }>(() => {
+    const { income, commitment } = this.totals();
+    const coverageRatio = commitment > 0 ? income / commitment : null;
+    const buffer = income - commitment;
+    const scenarios: ShockScenario[] = SHOCK_SCENARIOS.map((shockPct) => {
+      const hypotheticalIncome = income * (1 - shockPct / 100);
+      const ratio = hypotheticalIncome > 0 ? (commitment / hypotheticalIncome) * 100 : null;
+      return { shockPct, hypotheticalIncome, ratio };
+    });
+    return { coverageRatio, buffer, scenarios };
+  });
+
+  // ----- Closing Position: Balance Sheet ----------------------------------------
+  // A regrouping of the exact same signed figures `state.netWorth()` sums,
+  // split into Assets and Liabilities for audit-style presentation - the
+  // total below is arithmetically identical to `netWorthLabel()`, never a
+  // second, independently-computed Net Worth.
+
+  readonly balanceSheet = computed<{
+    assets: { label: string; amount: number }[];
+    liabilities: { label: string; amount: number }[];
+    totalAssets: number;
+    totalLiabilities: number;
+    netWorth: number;
+  }>(() => {
+    const balances = this.state.accountBalances();
+    const liquidPositive = balances
+      .filter((a) => a.kind !== 'card' && a.balance > 0)
+      .reduce((sum, a) => sum + a.balance, 0);
+    const overdrawn = balances
+      .filter((a) => a.kind !== 'card' && a.balance < 0)
+      .reduce((sum, a) => sum + -a.balance, 0);
+    const cardCredit = balances.filter((a) => a.kind === 'card' && a.balance > 0).reduce((sum, a) => sum + a.balance, 0);
+    const cardDebt = balances.filter((a) => a.kind === 'card' && a.balance < 0).reduce((sum, a) => sum + -a.balance, 0);
+    const fd = this.state.activeFixedDepositTotal();
+    const investments = this.state.activeInvestmentTotal();
+
+    const assets = [
+      { label: 'Liquid Cash', amount: liquidPositive + cardCredit },
+      { label: 'Fixed Deposits', amount: fd },
+      { label: 'Investments', amount: investments },
+    ].filter((r) => r.amount > 0);
+    const liabilities = [
+      { label: 'Card Debt', amount: cardDebt },
+      { label: 'Overdrawn Accounts', amount: overdrawn },
+    ].filter((r) => r.amount > 0);
+
+    const totalAssets = assets.reduce((sum, r) => sum + r.amount, 0);
+    const totalLiabilities = liabilities.reduce((sum, r) => sum + r.amount, 0);
+    return { assets, liabilities, totalAssets, totalLiabilities, netWorth: totalAssets - totalLiabilities };
+  });
 
   readonly netWorthLabel = computed(() => this.money(this.state.netWorth()));
 
@@ -504,5 +769,30 @@ export class ReportsPage {
 
   numberPart(amount: number): string {
     return formatAmountNumber(amount);
+  }
+
+  /** Whole-number percentage for a ratio/pace label - `null` (no income to
+   * divide by) renders as "—" so the template never has to juggle a
+   * nullable number itself. */
+  pct(value: number | null): string {
+    return value === null ? '—' : `${Math.round(value)}%`;
+  }
+
+  /** Savings Rate rendered as positive/negative for the stat tile's color -
+   * treated as non-negative when there's no income to divide by (nothing to
+   * flag red about), matching how `pct()` renders that case as "—" rather
+   * than an alarming default. */
+  isSavingsRatePositive(): boolean {
+    const rate = this.ratios().savingsRate;
+    return rate === null || rate >= 0;
+  }
+
+  /** "Fixed Cost Coverage" label - "∞" when there are no commitments to
+   * divide by (fully uncommitted, not a division error), otherwise the
+   * ratio to two decimal places with a "×" suffix. Kept out of the template
+   * so it never has to juggle the nullable value itself. */
+  coverageRatioLabel(): string {
+    const ratio = this.stressTest().coverageRatio;
+    return ratio === null ? '∞' : `${ratio.toFixed(2)}×`;
   }
 }

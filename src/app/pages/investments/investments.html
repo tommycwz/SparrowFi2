@@ -19,53 +19,68 @@
       <p>No investments recorded yet.</p>
     </div>
   } @else {
-    <div class="stack">
-      @for (inv of investments(); track inv.id) {
-        <div class="card inv-card">
-          <div class="inv-head" (click)="openEdit(inv)">
-            <div>
-              <div class="inv-name">{{ inv.name }}</div>
-              <div class="muted small">
-                {{ fundName(inv.fromAccountType, inv.fromAccountId) }} → {{ fundName(inv.toAccountType, inv.toAccountId) }}
+    <div class="mode-tabs" role="group" aria-label="Investment status">
+      <button type="button" class="mode-tab" [class.active]="tab() === 'active'" (click)="tab.set('active')">
+        Active <span class="tab-count">{{ activeInvestments().length }}</span>
+      </button>
+      <button type="button" class="mode-tab" [class.active]="tab() === 'past'" (click)="tab.set('past')">
+        Past <span class="tab-count">{{ pastInvestments().length }}</span>
+      </button>
+    </div>
+
+    @if (visibleInvestments().length === 0) {
+      <div class="card section-empty muted">
+        {{ tab() === 'active' ? 'No active investments.' : 'No completed investments yet.' }}
+      </div>
+    } @else {
+      <div class="stack">
+        @for (inv of visibleInvestments(); track inv.id) {
+          <div class="card inv-card">
+            <div class="inv-head" (click)="openEdit(inv)">
+              <div>
+                <div class="inv-name">{{ inv.name }}</div>
+                <div class="muted small">
+                  {{ fundName(inv.fromAccountType, inv.fromAccountId) }} → {{ fundName(inv.toAccountType, inv.toAccountId) }}
+                </div>
+                @if (inv.remarks) {
+                  <div class="inv-remarks muted small">{{ inv.remarks }}</div>
+                }
               </div>
-              @if (inv.remarks) {
-                <div class="inv-remarks muted small">{{ inv.remarks }}</div>
+              <span class="status-badge" [class]="'status-' + inv.status">{{ inv.status }}</span>
+            </div>
+            <div class="inv-body" (click)="openEdit(inv)">
+              <div>
+                <div class="muted small">Invested</div>
+                <div class="inv-value">{{ money(inv.amount) }}</div>
+              </div>
+              <div>
+                <div class="muted small">Date</div>
+                <div class="inv-value">{{ inv.date }}</div>
+              </div>
+              @if (inv.status === 'completed') {
+                <div>
+                  <div class="muted small">Final Amount ({{ inv.completionDate }})</div>
+                  <div class="inv-value">{{ money(inv.finalAmount ?? 0) }}</div>
+                </div>
+                <div>
+                  <div class="muted small">Gain / Loss</div>
+                  @let d = delta(inv);
+                  <div class="inv-value" [class.inv-gain]="(d ?? 0) > 0" [class.inv-loss]="(d ?? 0) < 0">
+                    {{ (d ?? 0) >= 0 ? '+' : '' }}{{ money(d ?? 0) }}
+                  </div>
+                </div>
               }
             </div>
-            <span class="status-badge" [class]="'status-' + inv.status">{{ inv.status }}</span>
-          </div>
-          <div class="inv-body" (click)="openEdit(inv)">
-            <div>
-              <div class="muted small">Invested</div>
-              <div class="inv-value">{{ money(inv.amount) }}</div>
+            <div class="inv-actions">
+              @if (inv.status === 'active') {
+                <button type="button" class="btn btn-secondary" (click)="openComplete(inv)">Complete Investment</button>
+              }
+              <button type="button" class="btn btn-danger" (click)="remove(inv.id)">Delete</button>
             </div>
-            <div>
-              <div class="muted small">Date</div>
-              <div class="inv-value">{{ inv.date }}</div>
-            </div>
-            @if (inv.status === 'completed') {
-              <div>
-                <div class="muted small">Final Amount ({{ inv.completionDate }})</div>
-                <div class="inv-value">{{ money(inv.finalAmount ?? 0) }}</div>
-              </div>
-              <div>
-                <div class="muted small">Gain / Loss</div>
-                @let d = delta(inv);
-                <div class="inv-value" [class.inv-gain]="(d ?? 0) > 0" [class.inv-loss]="(d ?? 0) < 0">
-                  {{ (d ?? 0) >= 0 ? '+' : '' }}{{ money(d ?? 0) }}
-                </div>
-              </div>
-            }
           </div>
-          <div class="inv-actions">
-            @if (inv.status === 'active') {
-              <button type="button" class="btn btn-secondary" (click)="openComplete(inv)">Complete Investment</button>
-            }
-            <button type="button" class="btn btn-danger" (click)="remove(inv.id)">Delete</button>
-          </div>
-        </div>
-      }
-    </div>
+        }
+      </div>
+    }
   }
 </div>
 
@@ -82,10 +97,7 @@
       </label>
       <label>
         From fund (optional)
-        <select
-          [ngModel]="form().fromFund"
-          (ngModelChange)="form.update((f) => ({ ...f, fromFund: $event }))"
-        >
+        <select [ngModel]="form().fromFund" (ngModelChange)="onFromFundChange($event)">
           <option value="">None (outside SparrowFi)</option>
           @if (banks().length > 0) {
             <optgroup label="Banks">
@@ -103,29 +115,31 @@
           }
         </select>
       </label>
-      <label>
-        To fund (optional)
-        <select
-          [ngModel]="form().toFund"
-          (ngModelChange)="form.update((f) => ({ ...f, toFund: $event }))"
-        >
-          <option value="">None (outside SparrowFi)</option>
-          @if (banks().length > 0) {
-            <optgroup label="Banks">
-              @for (b of banks(); track b.id) {
-                <option [value]="'bank:' + b.id">{{ b.name }}</option>
-              }
-            </optgroup>
-          }
-          @if (wallets().length > 0) {
-            <optgroup label="Wallets">
-              @for (w of wallets(); track w.id) {
-                <option [value]="'wallet:' + w.id">{{ w.name }}</option>
-              }
-            </optgroup>
-          }
-        </select>
-      </label>
+      @if (form().fromFund) {
+        <label>
+          To fund (optional)
+          <select
+            [ngModel]="form().toFund"
+            (ngModelChange)="form.update((f) => ({ ...f, toFund: $event }))"
+          >
+            <option value="">None (outside SparrowFi)</option>
+            @if (banks().length > 0) {
+              <optgroup label="Banks">
+                @for (b of banks(); track b.id) {
+                  <option [value]="'bank:' + b.id">{{ b.name }}</option>
+                }
+              </optgroup>
+            }
+            @if (wallets().length > 0) {
+              <optgroup label="Wallets">
+                @for (w of wallets(); track w.id) {
+                  <option [value]="'wallet:' + w.id">{{ w.name }}</option>
+                }
+              </optgroup>
+            }
+          </select>
+        </label>
+      }
       <label>
         Amount
         <input

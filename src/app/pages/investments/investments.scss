@@ -16,6 +16,64 @@
   gap: 0.6rem;
 }
 
+/* ----- Active / Past tabs (mirrors the Report page's period-mode tabs) ------- */
+
+.mode-tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.3rem;
+}
+
+.mode-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  border-radius: 9px;
+  padding: 0.5rem 0.4rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mode-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.mode-tab.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.tab-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.mode-tab.active .tab-count {
+  background: rgb(255 255 255 / 22%);
+  color: var(--accent-contrast);
+}
+
+/* Lighter-weight than the icon-led `.empty-state` card above - just a
+   one-line note for a tab that has no rows, not a full empty page. */
+.section-empty {
+  text-align: center;
+  padding: 1.1rem;
+  font-size: 0.85rem;
+}
+
 .small {
   font-size: 0.75rem;
 }

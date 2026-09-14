@@ -46,6 +46,8 @@ function blankForm(): InvestmentForm {
   };
 }
 
+export type InvestmentTab = 'active' | 'past';
+
 @Component({
   selector: 'app-investments',
   standalone: true,
@@ -58,6 +60,7 @@ export class InvestmentsPage {
   readonly showModal = signal(false);
   readonly editingId = signal<string | null>(null);
   readonly form = signal<InvestmentForm>(blankForm());
+  readonly tab = signal<InvestmentTab>('active');
 
   readonly completingId = signal<string | null>(null);
   readonly completeForm = signal<CompleteForm>({
@@ -75,6 +78,16 @@ export class InvestmentsPage {
     [...(this.state.state()?.investments ?? [])].sort((a, b) => b.date.localeCompare(a.date)),
   );
 
+  /** Still open - the investments you'd actually check in on. */
+  readonly activeInvestments = computed(() => this.investments().filter((i) => i.status === 'active'));
+  /** Completed - kept as a record of what happened, split out from the
+   * active list so a long history doesn't bury the ones still in play. */
+  readonly pastInvestments = computed(() => this.investments().filter((i) => i.status === 'completed'));
+  /** Whichever of the two lists above the current tab is showing. */
+  readonly visibleInvestments = computed(() =>
+    this.tab() === 'active' ? this.activeInvestments() : this.pastInvestments(),
+  );
+
   money(amount: number): string {
     return formatMoney(amount, this.state.state()!.settings.currency);
   }
@@ -89,6 +102,14 @@ export class InvestmentsPage {
     return investmentDelta(inv);
   }
 
+  /** Handles the "From fund" select changing - also clears any
+   * previously-chosen "To fund" when the source is set back to "None
+   * (outside SparrowFi)", since with no source account there's nothing this
+   * app is tracking money coming out of. */
+  onFromFundChange(fromFund: string): void {
+    this.form.update((f) => ({ ...f, fromFund, toFund: fromFund ? f.toFund : '' }));
+  }
+
   openAdd(): void {
     this.editingId.set(null);
     this.form.set(blankForm());
@@ -97,10 +118,11 @@ export class InvestmentsPage {
 
   openEdit(inv: Investment): void {
     this.editingId.set(inv.id);
+    const fromFund = encodeFund(inv.fromAccountType, inv.fromAccountId);
     this.form.set({
       name: inv.name,
-      fromFund: encodeFund(inv.fromAccountType, inv.fromAccountId),
-      toFund: encodeFund(inv.toAccountType, inv.toAccountId),
+      fromFund,
+      toFund: fromFund ? encodeFund(inv.toAccountType, inv.toAccountId) : '',
       amount: String(inv.amount),
       date: inv.date,
       remarks: inv.remarks ?? '',

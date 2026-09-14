@@ -19,45 +19,60 @@
       <p>No fixed deposits recorded yet.</p>
     </div>
   } @else {
-    <div class="stack">
-      @for (fd of deposits(); track fd.id) {
-        <div class="card fd-card">
-          <div class="fd-head" (click)="openEdit(fd)">
-            <div>
-              <div class="fd-bank">{{ bankName(fd.bankId) }}</div>
-              <div class="muted small">{{ fd.startDate }} → {{ maturityDate(fd) }}</div>
-              @if (fd.remarks) {
-                <div class="fd-remarks muted small">{{ fd.remarks }}</div>
-              }
-            </div>
-            <span class="status-badge" [class]="'status-' + fd.status">{{ fd.status }}</span>
-          </div>
-          <div class="fd-body" (click)="openEdit(fd)">
-            <div>
-              <div class="muted small">Principal</div>
-              <div class="fd-value">{{ money(fd.amount) }}</div>
-            </div>
-            <div>
-              <div class="muted small">Gain ({{ fd.percentage }}% · {{ fd.months }}mo)</div>
-              <div class="fd-value fd-gain">+{{ money(gainValue(fd)) }}</div>
-            </div>
-            <div>
-              <div class="muted small">Maturity Value</div>
-              <div class="fd-value">{{ money(maturityValue(fd)) }}</div>
-            </div>
-          </div>
-          <div class="fd-actions">
-            @if (fd.status === 'active') {
-              <button type="button" class="btn btn-secondary" (click)="markMatured(fd)">Mark Matured</button>
-            }
-            @if (fd.status === 'matured') {
-              <button type="button" class="btn btn-secondary" (click)="markWithdrawn(fd)">Mark Withdrawn</button>
-            }
-            <button type="button" class="btn btn-danger" (click)="remove(fd.id)">Delete</button>
-          </div>
-        </div>
-      }
+    <div class="mode-tabs" role="group" aria-label="Fixed deposit status">
+      <button type="button" class="mode-tab" [class.active]="tab() === 'active'" (click)="tab.set('active')">
+        Active <span class="tab-count">{{ activeDeposits().length }}</span>
+      </button>
+      <button type="button" class="mode-tab" [class.active]="tab() === 'past'" (click)="tab.set('past')">
+        Past <span class="tab-count">{{ pastDeposits().length }}</span>
+      </button>
     </div>
+
+    @if (visibleDeposits().length === 0) {
+      <div class="card section-empty muted">
+        {{ tab() === 'active' ? 'No active fixed deposits.' : 'No matured or withdrawn fixed deposits yet.' }}
+      </div>
+    } @else {
+      <div class="stack">
+        @for (fd of visibleDeposits(); track fd.id) {
+          <div class="card fd-card">
+            <div class="fd-head" (click)="openEdit(fd)">
+              <div>
+                <div class="fd-bank">{{ bankName(fd.bankId) }}</div>
+                <div class="muted small">{{ fd.startDate }} → {{ maturityDate(fd) }}</div>
+                @if (fd.remarks) {
+                  <div class="fd-remarks muted small">{{ fd.remarks }}</div>
+                }
+              </div>
+              <span class="status-badge" [class]="'status-' + fd.status">{{ fd.status }}</span>
+            </div>
+            <div class="fd-body" (click)="openEdit(fd)">
+              <div>
+                <div class="muted small">Principal</div>
+                <div class="fd-value">{{ money(fd.amount) }}</div>
+              </div>
+              <div>
+                <div class="muted small">Gain ({{ fd.percentage }}% · {{ fd.months }}mo)</div>
+                <div class="fd-value fd-gain">+{{ money(gainValue(fd)) }}</div>
+              </div>
+              <div>
+                <div class="muted small">Maturity Value</div>
+                <div class="fd-value">{{ money(maturityValue(fd)) }}</div>
+              </div>
+            </div>
+            <div class="fd-actions">
+              @if (fd.status === 'active') {
+                <button type="button" class="btn btn-secondary" (click)="markMatured(fd)">Mark Matured</button>
+              }
+              @if (fd.status === 'matured') {
+                <button type="button" class="btn btn-secondary" (click)="markWithdrawn(fd)">Mark Withdrawn</button>
+              }
+              <button type="button" class="btn btn-danger" (click)="remove(fd.id)">Delete</button>
+            </div>
+          </div>
+        }
+      </div>
+    }
   }
 </div>
 
@@ -66,10 +81,7 @@
     <div class="field-row">
       <label>
         Bank (optional)
-        <select
-          [ngModel]="form().bankId"
-          (ngModelChange)="form.update((f) => ({ ...f, bankId: $event }))"
-        >
+        <select [ngModel]="form().bankId" (ngModelChange)="onBankChange($event)">
           <option value="">None (memo only)</option>
           @for (b of banks(); track b.id) {
             <option [value]="b.id">{{ b.name }}</option>
@@ -114,18 +126,20 @@
           (ngModelChange)="form.update((f) => ({ ...f, startDate: $event }))"
         />
       </label>
-      <label>
-        Proceeds destination bank (optional)
-        <select
-          [ngModel]="form().toBankId"
-          (ngModelChange)="form.update((f) => ({ ...f, toBankId: $event }))"
-        >
-          <option value="">Same bank</option>
-          @for (b of banks(); track b.id) {
-            <option [value]="b.id">{{ b.name }}</option>
-          }
-        </select>
-      </label>
+      @if (form().bankId) {
+        <label>
+          Proceeds destination bank (optional)
+          <select
+            [ngModel]="form().toBankId"
+            (ngModelChange)="form.update((f) => ({ ...f, toBankId: $event }))"
+          >
+            <option value="">Same bank</option>
+            @for (b of banks(); track b.id) {
+              <option [value]="b.id">{{ b.name }}</option>
+            }
+          </select>
+        </label>
+      }
       <label>
         Remarks
         <input

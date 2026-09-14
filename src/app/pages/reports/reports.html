@@ -47,42 +47,85 @@
       <div class="range-inputs">
         <label>
           From
-          <input
-            type="month"
-            [ngModel]="rangeFrom()"
-            (ngModelChange)="onRangeFromChange($event)"
-          />
+          <input type="month" [ngModel]="rangeFrom()" (ngModelChange)="onRangeFromChange($event)" />
         </label>
         <label>
           To
-          <input
-            type="month"
-            [ngModel]="rangeTo()"
-            (ngModelChange)="onRangeToChange($event)"
-          />
+          <input type="month" [ngModel]="rangeTo()" (ngModelChange)="onRangeToChange($event)" />
         </label>
       </div>
     }
   </div>
 
+  <!-- ================= 01: Executive Summary ================= -->
   <div class="card stats-bar">
     <div class="stat">
-      <div class="stat-label muted">Total Income</div>
+      <div class="stat-label muted"
+        >Total Income<sf-info-tip
+          label="Total Income"
+          text="Everything recorded as Income in this period. Transfers, principal returns and other internal movements ('Other In'/'Other Out') are never counted here."
+      /></div>
       <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(totals().income) }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label muted">Total Commitments</div>
+      <div class="stat-label muted"
+        >Total Commitments<sf-info-tip
+          label="Total Commitments"
+          text="Fixed, recurring obligations this period - rent, loan instalments, insurance, subscriptions. Kept apart from Expenses so locked-in spend never hides inside discretionary spend."
+      /></div>
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(totals().commitment) }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label muted">Total Expenses</div>
+      <div class="stat-label muted"
+        >Total Expenses<sf-info-tip
+          label="Total Expenses"
+          text="Variable, discretionary spending this period - everyday purchases, not fixed commitments."
+      /></div>
       <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(totals().expense) }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label muted">Net Cash Flow</div>
+      <div class="stat-label muted"
+        >Net Cash Flow<sf-info-tip
+          label="Net Cash Flow"
+          text="Income minus Commitments minus Expenses for this period. Transfers, adjustments and Fixed Deposit/Investment principal moving in or out aren't included."
+          align="end"
+      /></div>
       <div class="stat-value" [class.positive]="totals().net >= 0" [class.negative]="totals().net < 0">
         {{ netStatLabel() }}
       </div>
+    </div>
+  </div>
+
+  <div class="card stats-bar stats-bar-3">
+    <div class="stat">
+      <div class="stat-label muted"
+        >Savings Rate<sf-info-tip
+          label="Savings Rate"
+          text="Net Cash Flow ÷ Income. What share of what you earned this period was actually kept, after both fixed commitments and variable spending. Shows '—' when there's no income to divide by."
+      /></div>
+      <div
+        class="stat-value"
+        [class.positive]="isSavingsRatePositive()"
+        [class.negative]="!isSavingsRatePositive()"
+        >{{ pct(ratios().savingsRate) }}</div
+      >
+    </div>
+    <div class="stat">
+      <div class="stat-label muted"
+        >Commitment Ratio<sf-info-tip
+          label="Commitment Ratio"
+          text="Fixed Commitments ÷ Income. How much of every dollar earned is already spoken for before any discretionary spending begins - the core structural-vulnerability figure."
+      /></div>
+      <div class="stat-value">{{ pct(ratios().commitmentRatio) }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label muted"
+        >Variable Ratio<sf-info-tip
+          label="Variable Ratio"
+          text="Variable Expenses ÷ Income. How much of every dollar earned went to discretionary, everyday spending this period."
+          align="end"
+      /></div>
+      <div class="stat-value">{{ pct(ratios().variableRatio) }}</div>
     </div>
   </div>
 
@@ -92,12 +135,18 @@
       <p>No transactions in this period.</p>
     </div>
   } @else {
+    <!-- ================= 02: Historical Trend ================= -->
     @if (hasMonthlyChart()) {
       <section>
         <div class="section-head">
-          <h2>Monthly Cash Flow</h2>
+          <h2
+            >Historical Trend<sf-info-tip
+              label="Historical Trend"
+              text="Income, Fixed Commitments and Variable Expenses for each month in the selected period, side by side - where a single month's totals can't show whether a pattern is drifting over time."
+          /></h2>
           <div class="cash-flow-legend">
             <span class="legend-item"><span class="legend-dot income"></span>Income</span>
+            <span class="legend-item"><span class="legend-dot commitment"></span>Commitment</span>
             <span class="legend-item"><span class="legend-dot expense"></span>Expense</span>
           </div>
         </div>
@@ -112,6 +161,11 @@
                     [attr.title]="'Income: ' + money(m.income)"
                   ></div>
                   <div
+                    class="cash-flow-bar commitment"
+                    [style.height.%]="barHeightPercent(m.commitment, monthlyBreakdown().max)"
+                    [attr.title]="'Commitment: ' + money(m.commitment)"
+                  ></div>
+                  <div
                     class="cash-flow-bar expense"
                     [style.height.%]="barHeightPercent(m.expense, monthlyBreakdown().max)"
                     [attr.title]="'Expense: ' + money(m.expense)"
@@ -123,28 +177,274 @@
           </div>
         </div>
       </section>
+
+      <!-- ================= 03: Structural Vulnerability Trend ================= -->
+      @if (vulnerabilityTrend(); as vt) {
+        <section>
+          <div class="section-head">
+            <h2
+              >Structural Vulnerability Trend<sf-info-tip
+                label="Structural Vulnerability Trend"
+                text="Commitment Ratio and Variable Ratio for each month, plotted against the classic 50% 'needs' guideline. Answers whether fixed commitments are quietly creeping up relative to income - a single month's snapshot never shows that."
+            /></h2>
+            <div class="cash-flow-legend">
+              <span class="legend-item"><span class="legend-dot commitment"></span>Commitment Ratio</span>
+              <span class="legend-item"><span class="legend-dot variable"></span>Variable Ratio</span>
+            </div>
+          </div>
+          <div class="card vuln-card">
+            <svg
+              class="vuln-svg"
+              [attr.viewBox]="'0 0 ' + vt.width + ' ' + vt.height"
+              preserveAspectRatio="none"
+              role="img"
+              aria-label="Commitment ratio and variable ratio by month"
+            >
+              <line
+                class="vuln-guideline"
+                x1="0"
+                [attr.x2]="vt.width"
+                [attr.y1]="vt.guidelineY"
+                [attr.y2]="vt.guidelineY"
+              />
+              <text class="vuln-guideline-label" [attr.x]="vt.width - 4" [attr.y]="vt.guidelineY - 5">50% guideline</text>
+              <path class="vuln-line commitment" [attr.d]="vt.commitmentPath" />
+              <path class="vuln-line variable" [attr.d]="vt.variablePath" />
+              @for (d of vt.commitmentDots; track $index) {
+                <circle class="vuln-dot commitment" [attr.cx]="d.x" [attr.cy]="d.y" r="3" />
+              }
+              @for (d of vt.variableDots; track $index) {
+                <circle class="vuln-dot variable" [attr.cx]="d.x" [attr.cy]="d.y" r="3" />
+              }
+              @for (l of vt.labels; track $index) {
+                @if (l.show) {
+                  <text class="vuln-x-label" [attr.x]="l.x" [attr.y]="vt.height - 6">{{ l.text }}</text>
+                }
+              }
+            </svg>
+          </div>
+        </section>
+      }
     } @else if (rangeTooWideForChart()) {
       <div class="banner banner-info">
         <sf-icon name="info" [size]="16" />
-        <span>Pick a narrower range to see the monthly cash flow chart - the totals and analyses below still cover the full period.</span>
+        <span
+          >Pick a narrower range to see the Historical Trend and Structural Vulnerability charts - the totals and analyses
+          below still cover the full period.</span
+        >
       </div>
     }
 
+    <!-- ================= 04: Income Statement (P&L) ================= -->
     <section>
       <div class="section-head">
-        <h2>Income Analysis</h2>
+        <h2
+          >Income Statement<sf-info-tip
+            label="Income Statement"
+            text="A profit-and-loss view of the period: Income at the top, Fixed Commitments and Variable Expenses subtracted, Net Cash Flow at the bottom - the same figures as the Executive Summary above, laid out as a statement."
+        /></h2>
       </div>
-      @if (incomeAnalysis().items.length === 0) {
+      <div class="card pl-summary">
+        <div class="pl-row">
+          <span class="pl-label">Total Income</span>
+          <span class="pl-amount positive">+{{ currencySymbol() }}{{ numberPart(totals().income) }}</span>
+        </div>
+        <div class="pl-row">
+          <span class="pl-label">Fixed Commitments</span>
+          <span class="pl-amount negative">-{{ currencySymbol() }}{{ numberPart(totals().commitment) }}</span>
+        </div>
+        <div class="pl-row">
+          <span class="pl-label">Variable Expenses</span>
+          <span class="pl-amount negative">-{{ currencySymbol() }}{{ numberPart(totals().expense) }}</span>
+        </div>
+        <div class="pl-row pl-total">
+          <span class="pl-label">Net Cash Flow</span>
+          <span class="pl-amount" [class.positive]="totals().net >= 0" [class.negative]="totals().net < 0">{{
+            netStatLabel()
+          }}</span>
+        </div>
+      </div>
+
+      <div class="dash-grid pl-grid">
+        <div>
+          <h3 class="pl-subhead muted">Income by Category</h3>
+          @if (incomeAnalysis().items.length === 0) {
+            <div class="empty-state card">
+              <sf-icon name="tag" [size]="28" />
+              <p>No income recorded in this period.</p>
+            </div>
+          } @else {
+            <div class="card breakdown-card">
+              <div class="donut-wrap">
+                <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Income by category">
+                  <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+                  @for (seg of incomeDonutSegments(); track seg.id) {
+                    <circle
+                      cx="21"
+                      cy="21"
+                      r="15.91549430919"
+                      fill="transparent"
+                      [attr.stroke]="seg.color"
+                      [attr.stroke-dasharray]="seg.dashArray"
+                      [attr.stroke-dashoffset]="seg.offset"
+                      class="donut-segment"
+                    />
+                  }
+                </svg>
+                <div class="donut-center">
+                  <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(incomeAnalysis().total) }}</span>
+                  <span class="donut-center-label muted">earned</span>
+                </div>
+              </div>
+              <div class="breakdown-list">
+                @for (c of incomeAnalysis().items; track c.id) {
+                  <div class="breakdown-row">
+                    <div class="breakdown-top">
+                      <span class="breakdown-dot" [style.background]="c.color"></span>
+                      <span class="breakdown-name">{{ c.name }}</span>
+                      <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+                    </div>
+                    <div class="breakdown-bar-track">
+                      <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+
+        <div>
+          <h3 class="pl-subhead muted">Fixed Commitments by Category</h3>
+          @if (commitmentAnalysis().items.length === 0) {
+            <div class="empty-state card">
+              <sf-icon name="layers" [size]="28" />
+              <p>No fixed commitments recorded in this period.</p>
+            </div>
+          } @else {
+            <div class="card breakdown-card">
+              <div class="donut-wrap">
+                <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Fixed commitments by category">
+                  <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+                  @for (seg of commitmentDonutSegments(); track seg.id) {
+                    <circle
+                      cx="21"
+                      cy="21"
+                      r="15.91549430919"
+                      fill="transparent"
+                      [attr.stroke]="seg.color"
+                      [attr.stroke-dasharray]="seg.dashArray"
+                      [attr.stroke-dashoffset]="seg.offset"
+                      class="donut-segment"
+                    />
+                  }
+                </svg>
+                <div class="donut-center">
+                  <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(commitmentAnalysis().total) }}</span>
+                  <span class="donut-center-label muted">committed</span>
+                </div>
+              </div>
+              <div class="breakdown-list">
+                @for (c of commitmentAnalysis().items; track c.id) {
+                  <div class="breakdown-row">
+                    <div class="breakdown-top">
+                      <span class="breakdown-dot" [style.background]="c.color"></span>
+                      <span class="breakdown-name">{{ c.name }}</span>
+                      <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+                    </div>
+                    <div class="breakdown-bar-track">
+                      <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+
+        <div>
+          <h3 class="pl-subhead muted">Variable Expenses by Category</h3>
+          @if (expenseAnalysis().items.length === 0) {
+            <div class="empty-state card">
+              <sf-icon name="tag" [size]="28" />
+              <p>No variable expenses recorded in this period.</p>
+            </div>
+          } @else {
+            <div class="card breakdown-card">
+              <div class="donut-wrap">
+                <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Variable expenses by category">
+                  <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+                  @for (seg of expenseDonutSegments(); track seg.id) {
+                    <circle
+                      cx="21"
+                      cy="21"
+                      r="15.91549430919"
+                      fill="transparent"
+                      [attr.stroke]="seg.color"
+                      [attr.stroke-dasharray]="seg.dashArray"
+                      [attr.stroke-dashoffset]="seg.offset"
+                      class="donut-segment"
+                    />
+                  }
+                </svg>
+                <div class="donut-center">
+                  <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(expenseAnalysis().total) }}</span>
+                  <span class="donut-center-label muted">spent</span>
+                </div>
+              </div>
+              <div class="breakdown-list">
+                @for (c of expenseAnalysis().items; track c.id) {
+                  <div class="breakdown-row">
+                    <div class="breakdown-top">
+                      <span class="breakdown-dot" [style.background]="c.color"></span>
+                      <span class="breakdown-name">{{ c.name }}</span>
+                      <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+                    </div>
+                    <div class="breakdown-bar-track">
+                      <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 05: Spending by Channel ================= -->
+    <section>
+      <div class="section-head">
+        <h2
+          >Spending by Channel<sf-info-tip
+            label="Spending by Channel"
+            text="Expenses and Commitments grouped by which Bank, Wallet or Card actually paid for them, with each account's own top categories underneath - 'where did the money physically leave from,' not just what it was spent on."
+        /></h2>
+        <div class="channel-tabs" role="group" aria-label="Spending channel">
+          @for (ch of spendingChannelOptions; track ch) {
+            <button
+              type="button"
+              class="channel-tab"
+              [class.active]="spendingChannel() === ch"
+              (click)="spendingChannel.set(ch)"
+            >
+              <sf-icon [name]="spendingChannelIcons[ch]" [size]="14" />
+              {{ spendingChannelLabels[ch] }}
+            </button>
+          }
+        </div>
+      </div>
+      @if (activeChannelAnalysis().items.length === 0) {
         <div class="empty-state card">
-          <sf-icon name="tag" [size]="28" />
-          <p>No income recorded in this period.</p>
+          <sf-icon [name]="spendingChannelIcons[spendingChannel()]" [size]="28" />
+          <p>No {{ spendingChannelLabels[spendingChannel()].toLowerCase() }} expenses recorded in this period.</p>
         </div>
       } @else {
         <div class="card breakdown-card">
           <div class="donut-wrap">
-            <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Income by category">
+            <svg viewBox="0 0 42 42" class="donut-svg" role="img" [attr.aria-label]="'Spending by ' + spendingChannelLabels[spendingChannel()]">
               <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-              @for (seg of incomeDonutSegments(); track seg.id) {
+              @for (seg of activeChannelDonutSegments(); track seg.id) {
                 <circle
                   cx="21"
                   cy="21"
@@ -158,12 +458,78 @@
               }
             </svg>
             <div class="donut-center">
-              <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(incomeAnalysis().total) }}</span>
-              <span class="donut-center-label muted">earned</span>
+              <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(activeChannelAnalysis().total) }}</span>
+              <span class="donut-center-label muted">spent</span>
             </div>
           </div>
           <div class="breakdown-list">
-            @for (c of incomeAnalysis().items; track c.id) {
+            @for (c of activeChannelAnalysis().items; track c.id) {
+              <div class="breakdown-row">
+                <div class="breakdown-top">
+                  <span class="breakdown-dot" [style.background]="c.color"></span>
+                  <span class="breakdown-name">{{ c.name }}</span>
+                  <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
+                </div>
+                <div class="breakdown-bar-track">
+                  <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
+                </div>
+                @if (c.categories.length > 0) {
+                  <div class="breakdown-subcats">
+                    @for (cat of c.categories; track cat.id) {
+                      <span class="subcat-chip">
+                        <span class="subcat-dot" [style.background]="cat.color"></span>
+                        {{ cat.name }} · {{ currencySymbol() }}{{ numberPart(cat.amount) }}
+                      </span>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- ================= 06: Portfolio & Asset Allocation ================= -->
+    <section>
+      <div class="section-head">
+        <h2
+          >Asset Allocation<sf-info-tip
+            label="Asset Allocation"
+            text="How your total assets are currently split between Liquid Cash, Fixed Deposits and Investments principal - today's live figures, not scoped to the period filter above."
+        /></h2>
+        <span class="muted period-tag">As of Today</span>
+      </div>
+      @if (assetAllocation().items.length === 0) {
+        <div class="empty-state card">
+          <sf-icon name="layers" [size]="28" />
+          <p>No assets recorded yet.</p>
+        </div>
+      } @else {
+        <div class="card breakdown-card">
+          <div class="donut-wrap">
+            <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Asset allocation">
+              <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+              @for (seg of assetAllocationDonutSegments(); track seg.id) {
+                <circle
+                  cx="21"
+                  cy="21"
+                  r="15.91549430919"
+                  fill="transparent"
+                  [attr.stroke]="seg.color"
+                  [attr.stroke-dasharray]="seg.dashArray"
+                  [attr.stroke-dashoffset]="seg.offset"
+                  class="donut-segment"
+                />
+              }
+            </svg>
+            <div class="donut-center">
+              <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(assetAllocation().total) }}</span>
+              <span class="donut-center-label muted">total assets</span>
+            </div>
+          </div>
+          <div class="breakdown-list">
+            @for (c of assetAllocation().items; track c.id) {
               <div class="breakdown-row">
                 <div class="breakdown-top">
                   <span class="breakdown-dot" [style.background]="c.color"></span>
@@ -180,321 +546,215 @@
       }
     </section>
 
-    <div class="dash-grid">
-      <section>
-        <div class="section-head">
-          <h2>Fixed Commitments Analysis</h2>
-        </div>
-        @if (commitmentAnalysis().items.length === 0) {
-          <div class="empty-state card">
-            <sf-icon name="layers" [size]="28" />
-            <p>No fixed commitments recorded in this period.</p>
-          </div>
-        } @else {
-          <div class="card breakdown-card">
-            <div class="donut-wrap">
-              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Fixed commitments by category">
-                <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-                @for (seg of commitmentDonutSegments(); track seg.id) {
-                  <circle
-                    cx="21"
-                    cy="21"
-                    r="15.91549430919"
-                    fill="transparent"
-                    [attr.stroke]="seg.color"
-                    [attr.stroke-dasharray]="seg.dashArray"
-                    [attr.stroke-dashoffset]="seg.offset"
-                    class="donut-segment"
-                  />
-                }
-              </svg>
-              <div class="donut-center">
-                <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(commitmentAnalysis().total) }}</span>
-                <span class="donut-center-label muted">committed</span>
-              </div>
-            </div>
-            <div class="breakdown-list">
-              @for (c of commitmentAnalysis().items; track c.id) {
-                <div class="breakdown-row">
-                  <div class="breakdown-top">
-                    <span class="breakdown-dot" [style.background]="c.color"></span>
-                    <span class="breakdown-name">{{ c.name }}</span>
-                    <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
-                  </div>
-                  <div class="breakdown-bar-track">
-                    <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
-                  </div>
-                </div>
-              }
-            </div>
-          </div>
-        }
-      </section>
-
-      <section>
-        <div class="section-head">
-          <h2>Variable Expenses Analysis</h2>
-        </div>
-        @if (expenseAnalysis().items.length === 0) {
-          <div class="empty-state card">
-            <sf-icon name="tag" [size]="28" />
-            <p>No variable expenses recorded in this period.</p>
-          </div>
-        } @else {
-          <div class="card breakdown-card">
-            <div class="donut-wrap">
-              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Variable expenses by category">
-                <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-                @for (seg of expenseDonutSegments(); track seg.id) {
-                  <circle
-                    cx="21"
-                    cy="21"
-                    r="15.91549430919"
-                    fill="transparent"
-                    [attr.stroke]="seg.color"
-                    [attr.stroke-dasharray]="seg.dashArray"
-                    [attr.stroke-dashoffset]="seg.offset"
-                    class="donut-segment"
-                  />
-                }
-              </svg>
-              <div class="donut-center">
-                <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(expenseAnalysis().total) }}</span>
-                <span class="donut-center-label muted">spent</span>
-              </div>
-            </div>
-            <div class="breakdown-list">
-              @for (c of expenseAnalysis().items; track c.id) {
-                <div class="breakdown-row">
-                  <div class="breakdown-top">
-                    <span class="breakdown-dot" [style.background]="c.color"></span>
-                    <span class="breakdown-name">{{ c.name }}</span>
-                    <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
-                  </div>
-                  <div class="breakdown-bar-track">
-                    <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
-                  </div>
-                </div>
-              }
-            </div>
-          </div>
-        }
-      </section>
-    </div>
-
-    <div class="dash-grid">
-      <section>
-        <div class="section-head">
-          <h2>Card Spending Analysis</h2>
-        </div>
-        @if (cardSpendingAnalysis().items.length === 0) {
-          <div class="empty-state card">
-            <sf-icon name="card" [size]="28" />
-            <p>No card expenses recorded in this period.</p>
-          </div>
-        } @else {
-          <div class="card breakdown-card">
-            <div class="donut-wrap">
-              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Spending by card">
-                <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-                @for (seg of cardSpendingDonutSegments(); track seg.id) {
-                  <circle
-                    cx="21"
-                    cy="21"
-                    r="15.91549430919"
-                    fill="transparent"
-                    [attr.stroke]="seg.color"
-                    [attr.stroke-dasharray]="seg.dashArray"
-                    [attr.stroke-dashoffset]="seg.offset"
-                    class="donut-segment"
-                  />
-                }
-              </svg>
-              <div class="donut-center">
-                <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(cardSpendingAnalysis().total) }}</span>
-                <span class="donut-center-label muted">spent</span>
-              </div>
-            </div>
-            <div class="breakdown-list">
-              @for (c of cardSpendingAnalysis().items; track c.id) {
-                <div class="breakdown-row">
-                  <div class="breakdown-top">
-                    <span class="breakdown-dot" [style.background]="c.color"></span>
-                    <span class="breakdown-name">{{ c.name }}</span>
-                    <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
-                  </div>
-                  <div class="breakdown-bar-track">
-                    <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
-                  </div>
-                  @if (c.categories.length > 0) {
-                    <div class="breakdown-subcats">
-                      @for (cat of c.categories; track cat.id) {
-                        <span class="subcat-chip">
-                          <span class="subcat-dot" [style.background]="cat.color"></span>
-                          {{ cat.name }} · {{ currencySymbol() }}{{ numberPart(cat.amount) }}
-                        </span>
-                      }
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-        }
-      </section>
-
-      <section>
-        <div class="section-head">
-          <h2>Wallet Spending Analysis</h2>
-        </div>
-        @if (walletSpendingAnalysis().items.length === 0) {
-          <div class="empty-state card">
-            <sf-icon name="wallet" [size]="28" />
-            <p>No wallet expenses recorded in this period.</p>
-          </div>
-        } @else {
-          <div class="card breakdown-card">
-            <div class="donut-wrap">
-              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Spending by wallet">
-                <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
-                @for (seg of walletSpendingDonutSegments(); track seg.id) {
-                  <circle
-                    cx="21"
-                    cy="21"
-                    r="15.91549430919"
-                    fill="transparent"
-                    [attr.stroke]="seg.color"
-                    [attr.stroke-dasharray]="seg.dashArray"
-                    [attr.stroke-dashoffset]="seg.offset"
-                    class="donut-segment"
-                  />
-                }
-              </svg>
-              <div class="donut-center">
-                <span class="donut-center-value">{{ currencySymbol() }}{{ numberPart(walletSpendingAnalysis().total) }}</span>
-                <span class="donut-center-label muted">spent</span>
-              </div>
-            </div>
-            <div class="breakdown-list">
-              @for (c of walletSpendingAnalysis().items; track c.id) {
-                <div class="breakdown-row">
-                  <div class="breakdown-top">
-                    <span class="breakdown-dot" [style.background]="c.color"></span>
-                    <span class="breakdown-name">{{ c.name }}</span>
-                    <span class="breakdown-amount">{{ currencySymbol() }}{{ numberPart(c.amount) }}</span>
-                  </div>
-                  <div class="breakdown-bar-track">
-                    <div class="breakdown-bar-fill" [style.width.%]="c.percent" [style.background]="c.color"></div>
-                  </div>
-                  @if (c.categories.length > 0) {
-                    <div class="breakdown-subcats">
-                      @for (cat of c.categories; track cat.id) {
-                        <span class="subcat-chip">
-                          <span class="subcat-dot" [style.background]="cat.color"></span>
-                          {{ cat.name }} · {{ currencySymbol() }}{{ numberPart(cat.amount) }}
-                        </span>
-                      }
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-        }
-      </section>
-    </div>
-  }
-
-  <section>
-    <div class="section-head">
-      <h2>Investments</h2>
-      <div class="cash-flow-legend">
-        <span class="legend-item"><span class="legend-dot invested"></span>Invested</span>
-        <span class="legend-item"><span class="legend-dot gain"></span>Gain</span>
-        <span class="legend-item"><span class="legend-dot loss"></span>Loss</span>
+    <section>
+      <div class="section-head">
+        <h2
+          >Fixed Deposits<sf-info-tip
+            label="Fixed Deposits"
+            text="Every Fixed Deposit on record, soonest maturity first - active, matured and withdrawn deposits all stay visible as a record of what happened, not just the currently-active ones."
+        /></h2>
       </div>
-    </div>
-
-    @if (investmentBreakdown().bars.length === 0) {
-      <div class="empty-state card">
-        <sf-icon name="trending-up" [size]="28" />
-        <p>No investments recorded yet.</p>
-      </div>
-    } @else {
-      <div class="card investment-chart-card">
-        <div class="investment-chart">
-          @for (b of investmentBreakdown().bars; track b.id) {
-            <div class="investment-col">
-              <div class="investment-bars">
-                <div
-                  class="investment-bar-track"
-                  [style.height.%]="barHeightPercent(b.total, investmentBreakdown().max)"
-                >
-                  @if (b.gain > 0) {
-                    <div
-                      class="investment-bar-segment gain"
-                      [style.height.%]="(b.gain / b.total) * 100"
-                    ></div>
-                  }
-                  @if (b.loss > 0) {
-                    <div
-                      class="investment-bar-segment loss"
-                      [style.height.%]="(b.loss / b.total) * 100"
-                    ></div>
-                  }
-                  <div
-                    class="investment-bar-segment base"
-                    [style.height.%]="(b.baseAmount / b.total) * 100"
-                  ></div>
-                </div>
+      @if (fixedDepositLedger().length === 0) {
+        <div class="empty-state card">
+          <sf-icon name="lock" [size]="28" />
+          <p>No fixed deposits recorded yet.</p>
+        </div>
+      } @else {
+        <div class="card fd-ledger">
+          @for (fd of fixedDepositLedger(); track fd.id) {
+            <div class="fd-row">
+              <div class="fd-row-main">
+                <span class="fd-bank">{{ fd.bankName }}</span>
+                <span [class]="'fd-status fd-status-' + fd.status">{{ fd.status }}</span>
               </div>
-              <span class="investment-label muted" [title]="b.name">{{ b.name }}</span>
-              <span class="investment-amount muted small" [title]="'Invested ' + money(b.amount)">
-                {{ money(b.amount) }}
-              </span>
-              @if (b.gain > 0 || b.loss > 0) {
-                <span
-                  class="investment-sub small"
-                  [class.positive]="b.gain > 0"
-                  [class.negative]="b.loss > 0"
-                >
-                  {{ b.gain > 0 ? '+' : '-' }}{{ money(b.gain > 0 ? b.gain : b.loss) }}
-                </span>
-              }
+              <div class="fd-row-detail muted">
+                {{ fd.percentage }}% p.a. · {{ fd.months }} mo · matures {{ fd.maturityDate }}
+              </div>
+              <div class="fd-row-amounts">
+                <span class="fd-principal">{{ money(fd.principal) }}</span>
+                <sf-icon name="chevron-right" [size]="14" />
+                <span class="fd-maturity">{{ money(fd.maturityValue) }}</span>
+              </div>
             </div>
           }
         </div>
-      </div>
-    }
-  </section>
+      }
+    </section>
 
-  <section>
-    <div class="section-head">
-      <h2>Current Asset Balances</h2>
-      <span class="muted period-tag">As of Today</span>
-    </div>
+    <section>
+      <div class="section-head">
+        <h2
+          >Investments<sf-info-tip
+            label="Investments"
+            text="Every investment, principal as the neutral base segment plus whatever it gained (green, stacked on top) or lost (red) once completed. Today's live figures, not scoped to the period filter above."
+        /></h2>
+        <div class="cash-flow-legend">
+          <span class="legend-item"><span class="legend-dot invested"></span>Invested</span>
+          <span class="legend-item"><span class="legend-dot gain"></span>Gain</span>
+          <span class="legend-item"><span class="legend-dot loss"></span>Loss</span>
+        </div>
+      </div>
 
-    @if (state.accountBalances().length === 0) {
-      <div class="empty-state card">
-        <sf-icon name="wallet" [size]="28" />
-        <p>No accounts yet.</p>
+      @if (investmentBreakdown().bars.length === 0) {
+        <div class="empty-state card">
+          <sf-icon name="trending-up" [size]="28" />
+          <p>No investments recorded yet.</p>
+        </div>
+      } @else {
+        <div class="card investment-chart-card">
+          <div class="investment-chart">
+            @for (b of investmentBreakdown().bars; track b.id) {
+              <div class="investment-col">
+                <div class="investment-bars">
+                  <div class="investment-bar-track" [style.height.%]="barHeightPercent(b.total, investmentBreakdown().max)">
+                    @if (b.gain > 0) {
+                      <div class="investment-bar-segment gain" [style.height.%]="(b.gain / b.total) * 100"></div>
+                    }
+                    @if (b.loss > 0) {
+                      <div class="investment-bar-segment loss" [style.height.%]="(b.loss / b.total) * 100"></div>
+                    }
+                    <div class="investment-bar-segment base" [style.height.%]="(b.baseAmount / b.total) * 100"></div>
+                  </div>
+                </div>
+                <span class="investment-label muted" [title]="b.name">{{ b.name }}</span>
+                <span class="investment-amount muted small" [title]="'Invested ' + money(b.amount)">
+                  {{ money(b.amount) }}
+                </span>
+                @if (b.gain > 0 || b.loss > 0) {
+                  <span class="investment-sub small" [class.positive]="b.gain > 0" [class.negative]="b.loss > 0">
+                    {{ b.gain > 0 ? '+' : '-' }}{{ money(b.gain > 0 ? b.gain : b.loss) }}
+                  </span>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- ================= 07: Structural Vulnerability / Stress Test ================= -->
+    <section>
+      <div class="section-head">
+        <h2
+          >Structural Vulnerability Stress Test<sf-info-tip
+            label="Stress Test"
+            text="How exposed this period's finances are to a drop in income - Fixed Cost Coverage, Discretionary Buffer, and what the Commitment Ratio would look like under a hypothetical income shock with spending unchanged."
+        /></h2>
       </div>
-    } @else {
-      <div class="card net-worth-row">
-        <span class="muted">Net Worth</span>
-        <span class="net-worth-value">{{ netWorthLabel() }}</span>
+      <div class="card stats-bar stats-bar-2">
+        <div class="stat">
+          <div class="stat-label muted"
+            >Fixed Cost Coverage<sf-info-tip
+              label="Fixed Cost Coverage"
+              text="Income ÷ Fixed Commitments. How many times over this period's income covers what's already spoken for. Shows '∞' when there are no commitments to divide by."
+          /></div>
+          <div class="stat-value">{{ coverageRatioLabel() }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label muted"
+            >Discretionary Buffer<sf-info-tip
+              label="Discretionary Buffer"
+              text="Income minus Fixed Commitments - the cash left over before variable, discretionary spending even starts."
+              align="end"
+          /></div>
+          <div class="stat-value" [class.positive]="stressTest().buffer >= 0" [class.negative]="stressTest().buffer < 0">
+            {{ money(stressTest().buffer) }}
+          </div>
+        </div>
       </div>
-      <div class="account-grid">
-        @for (a of state.accountBalances(); track a.kind + a.id) {
-          <div class="account-card card">
-            <div class="acc-header">
-              <span class="acc-dot" [style.background]="a.color"></span>
-              <span class="acc-name">{{ a.name }}</span>
-            </div>
-            <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
+
+      <div class="card shock-table">
+        <div class="shock-row shock-head muted">
+          <span>Income Shock</span>
+          <span>Hypothetical Income</span>
+          <span>Resulting Commitment Ratio</span>
+        </div>
+        @for (s of stressTest().scenarios; track s.shockPct) {
+          <div class="shock-row">
+            <span>-{{ s.shockPct }}%</span>
+            <span>{{ money(s.hypotheticalIncome) }}</span>
+            <span
+              class="shock-ratio"
+              [class.negative]="s.ratio !== null && s.ratio > 100"
+              [class.warning]="s.ratio !== null && s.ratio > 50 && s.ratio <= 100"
+              >{{ pct(s.ratio) }}</span
+            >
           </div>
         }
       </div>
-    }
-  </section>
+    </section>
+
+    <!-- ================= 08: Closing Position ================= -->
+    <section>
+      <div class="section-head">
+        <h2
+          >Closing Position<sf-info-tip
+            label="Closing Position"
+            text="Assets and Liabilities as of today, laid out as a balance sheet. The Net Worth total here is arithmetically identical to the Net Worth shown on the Dashboard - never a second, independently-computed figure."
+        /></h2>
+        <span class="muted period-tag">As of Today</span>
+      </div>
+
+      @if (balanceSheet().totalAssets === 0 && balanceSheet().totalLiabilities === 0) {
+        <div class="empty-state card">
+          <sf-icon name="list" [size]="28" />
+          <p>No accounts yet.</p>
+        </div>
+      } @else {
+        <div class="card balance-sheet">
+          <div class="balance-col">
+            <h3 class="pl-subhead muted">Assets</h3>
+            @for (a of balanceSheet().assets; track a.label) {
+              <div class="pl-row">
+                <span class="pl-label">{{ a.label }}</span>
+                <span class="pl-amount">{{ money(a.amount) }}</span>
+              </div>
+            }
+            <div class="pl-row pl-total">
+              <span class="pl-label">Total Assets</span>
+              <span class="pl-amount">{{ money(balanceSheet().totalAssets) }}</span>
+            </div>
+          </div>
+          <div class="balance-col">
+            <h3 class="pl-subhead muted">Liabilities</h3>
+            @if (balanceSheet().liabilities.length === 0) {
+              <div class="pl-row">
+                <span class="pl-label muted">None</span>
+              </div>
+            }
+            @for (l of balanceSheet().liabilities; track l.label) {
+              <div class="pl-row">
+                <span class="pl-label">{{ l.label }}</span>
+                <span class="pl-amount negative">{{ money(l.amount) }}</span>
+              </div>
+            }
+            <div class="pl-row pl-total">
+              <span class="pl-label">Total Liabilities</span>
+              <span class="pl-amount" [class.negative]="balanceSheet().totalLiabilities > 0">{{
+                money(balanceSheet().totalLiabilities)
+              }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="card net-worth-row">
+          <span class="muted">Net Worth</span>
+          <span class="net-worth-value">{{ netWorthLabel() }}</span>
+        </div>
+      }
+
+      @if (state.accountBalances().length > 0) {
+        <div class="account-grid">
+          @for (a of state.accountBalances(); track a.kind + a.id) {
+            <div class="account-card card">
+              <div class="acc-header">
+                <span class="acc-dot" [style.background]="a.color"></span>
+                <span class="acc-name">{{ a.name }}</span>
+              </div>
+              <div class="acc-balance" [class.negative]="a.balance < 0">{{ money(a.balance) }}</div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  }
 </div>

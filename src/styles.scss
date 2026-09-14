@@ -96,6 +96,13 @@ textarea {
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
   width: 100%;
+  /* Explicit, not inherited - every field in this app sits inside a
+     <label>, and `font: inherit` above was pulling in that label's own
+     0.85rem (~13.6px) instead of a sensible field size. iOS Safari
+     auto-zooms the whole viewport on focus whenever a form control's
+     effective font-size is under 16px, which is exactly what was
+     triggering the zoom-on-tap in the installed PWA. */
+  font-size: 16px;
 }
 
 input:focus,

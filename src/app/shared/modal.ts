@@ -7,8 +7,8 @@ import { IconComponent } from './icon';
   imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="backdrop" (click)="onBackdropClick()">
-      <div class="panel" role="dialog" aria-modal="true" [attr.aria-label]="title()" (click)="$event.stopPropagation()">
+    <div class="backdrop">
+      <div class="panel" role="dialog" aria-modal="true" [attr.aria-label]="title()">
         <header>
           <h2>{{ title() }}</h2>
           @if (dismissible()) {
@@ -96,8 +96,4 @@ export class ModalComponent {
   readonly title = input('');
   readonly dismissible = input(true);
   @Output() close = new EventEmitter<void>();
-
-  onBackdropClick(): void {
-    if (this.dismissible()) this.close.emit();
-  }
 }

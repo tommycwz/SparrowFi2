@@ -112,7 +112,18 @@
   text-align: center;
   position: relative;
   min-width: 0;
-  overflow: hidden;
+  // Not `overflow: hidden` - `.stat-value` already clips its own text with
+  // an ellipsis, and a hidden overflow here would also clip the info-tip
+  // popover nested inside `.stat-label`, which needs to escape this cell's
+  // bounds to be readable.
+}
+
+.stats-bar-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stats-bar-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .stat:not(:last-child)::after {
@@ -235,8 +246,8 @@
 }
 
 .cash-flow-bar {
-  width: 40%;
-  max-width: 16px;
+  width: 28%;
+  max-width: 12px;
   border-radius: 4px 4px 0 0;
   min-height: 2px;
 }
@@ -247,6 +258,10 @@
 
 .cash-flow-bar.expense {
   background: var(--danger);
+}
+
+.cash-flow-bar.commitment {
+  background: var(--commitment);
 }
 
 .cash-flow-label {
@@ -264,6 +279,68 @@
 
 .legend-dot.loss {
   background: var(--danger);
+}
+
+.legend-dot.commitment {
+  background: var(--commitment);
+}
+
+.legend-dot.variable {
+  background: var(--warning);
+}
+
+/* ----- Structural Vulnerability trend (dual-line chart) --------------------- */
+
+.vuln-card {
+  padding: 0.75rem 0.5rem 0.25rem;
+}
+
+.vuln-svg {
+  width: 100%;
+  height: 170px;
+  display: block;
+  overflow: visible;
+}
+
+.vuln-guideline {
+  stroke: var(--border);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.vuln-guideline-label {
+  font-size: 8px;
+  font-weight: 700;
+  fill: var(--text-muted);
+  text-anchor: end;
+}
+
+.vuln-line {
+  fill: none;
+  stroke-width: 2.25;
+}
+
+.vuln-line.commitment {
+  stroke: var(--commitment);
+}
+
+.vuln-line.variable {
+  stroke: var(--warning);
+}
+
+.vuln-dot.commitment {
+  fill: var(--commitment);
+}
+
+.vuln-dot.variable {
+  fill: var(--warning);
+}
+
+.vuln-x-label {
+  font-size: 8px;
+  font-weight: 600;
+  fill: var(--text-muted);
+  text-anchor: middle;
 }
 
 /* ----- Investments (per-investment principal vs. gain/loss) ----------------- */
@@ -512,6 +589,263 @@
   display: inline-block;
 }
 
+/* ----- Income Statement (P&L) summary + Closing Position balance sheet ------ */
+/* Share the same row/label/amount classes since both are "a list of labeled
+   amounts with a bolded total row" - a P&L statement and a balance sheet are
+   the same visual shape, just different rows. */
+
+.pl-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.pl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+}
+
+.pl-row:not(:last-child):not(.pl-total) {
+  border-bottom: 1px solid var(--border);
+}
+
+.pl-total {
+  border-top: 1px solid var(--border);
+  margin-top: 0.15rem;
+  padding-top: 0.55rem;
+  font-weight: 800;
+}
+
+.pl-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.pl-total .pl-label {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.pl-amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pl-amount.positive {
+  color: var(--success);
+}
+
+.pl-amount.negative {
+  color: var(--danger);
+}
+
+.pl-subhead {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+/* `.dash-grid > section` handles the two-up Commitments/Expenses layout
+   elsewhere on this page; the Income Statement's three-up breakdown uses
+   plain `<div>` columns instead (a `<section>` per donut would be one too
+   many nested landmarks for what's really one section's worth of content),
+   so it gets the same "stretch card to fill the column" treatment here.
+   Relies on the grid's default `align-items: stretch` to give each column
+   the full row height to begin with - `.pl-grid` must NOT set its own
+   `align-items` (a previous `align-items: start` here silently defeated
+   this, since a shrink-wrapped column gives `flex: 1` below nothing to
+   grow into, leaving Income/Commitments/Expenses at three different
+   heights whenever one has much more content than the others). */
+.pl-grid > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-grid > div > .card {
+  flex: 1;
+}
+
+@media (min-width: 1100px) {
+  .pl-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.balance-sheet {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (min-width: 700px) {
+  .balance-sheet {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .balance-col:first-child {
+    border-right: 1px solid var(--border);
+    padding-right: 1.5rem;
+  }
+}
+
+/* ----- Spending by Channel tabs (mirrors .mode-tabs, sized for a section head) */
+
+.channel-tabs {
+  display: flex;
+  gap: 0.3rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.2rem;
+}
+
+.channel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.channel-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.channel-tab.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* ----- Fixed Deposits ledger -------------------------------------------------- */
+
+.fd-ledger {
+  display: flex;
+  flex-direction: column;
+}
+
+.fd-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.75rem 0;
+}
+
+.fd-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.fd-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.fd-bank {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.fd-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.fd-status-active {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+
+.fd-status-matured {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.fd-status-withdrawn {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.fd-row-detail {
+  font-size: 0.75rem;
+}
+
+.fd-row-amounts {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.fd-principal {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.fd-maturity {
+  font-weight: 800;
+}
+
+/* ----- Stress test scenario table -------------------------------------------- */
+
+.shock-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.75rem;
+}
+
+.shock-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1.4fr;
+  gap: 0.5rem;
+  padding: 0.55rem 0.25rem;
+  font-size: 0.85rem;
+  align-items: center;
+}
+
+.shock-row:not(.shock-head):not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.shock-head {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.shock-ratio {
+  font-weight: 700;
+}
+
+.shock-ratio.warning {
+  color: var(--warning);
+}
+
+.shock-ratio.negative {
+  color: var(--danger);
+}
+
 /* ----- Current asset balances (mirrors Dashboard's Accounts section) -------- */
 
 .net-worth-row {
@@ -583,5 +917,15 @@
 
   .stat {
     padding: 0.3rem 0.35rem;
+  }
+
+  .stats-bar-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shock-row {
+    grid-template-columns: 1fr 1fr 1.1fr;
+    gap: 0.3rem;
+    font-size: 0.72rem;
   }
 }

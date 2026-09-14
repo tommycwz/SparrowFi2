@@ -1,28 +1,135 @@
-.net-worth {
+/* ----- Zone 1: Cash Position (hero) --------------------------------------- */
+
+.hero-card {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.75rem;
 }
 
-.net-worth h1 {
+.hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.hero-num {
   font-size: 2.1rem;
   font-weight: 800;
+  margin-top: 0.15rem;
 }
 
-.net-worth-delta {
+.hero-delta {
   font-size: 0.85rem;
   font-weight: 700;
+  margin-top: 0.3rem;
 }
 
-.net-worth-delta.positive {
+.hero-delta.positive {
   color: var(--success);
 }
 
-.net-worth-delta.negative {
+.hero-delta.negative {
   color: var(--danger);
 }
 
-/* ----- Monthly stats bar (mirrors the Transactions page's summary bar) ---- */
+.hero-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.hero-secondary .muted {
+  font-size: 0.78rem;
+}
+
+.hero-secondary strong {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.sparkline {
+  width: 100%;
+  height: 56px;
+  display: block;
+}
+
+.spark-area {
+  fill: var(--accent);
+  opacity: 0.12;
+}
+
+.spark-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.spark-dot {
+  fill: var(--accent);
+}
+
+/* ----- Shared bits: section headers, empty states, chips ------------------ */
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.section-head h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.link {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.chip-warn {
+  background: rgb(217 119 6 / 14%);
+  color: var(--warning);
+}
+
+.chip-bad {
+  background: rgb(220 38 38 / 12%);
+  color: var(--danger);
+}
+
+.chip-info {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+/* ----- Monthly stats bar --------------------------------------------------- */
 
 .stats-bar {
   display: grid;
@@ -49,7 +156,10 @@
   text-align: center;
   position: relative;
   min-width: 0;
-  overflow: hidden;
+  /* Not `overflow: hidden` - `.stat-value` already clips its own text with
+     an ellipsis, and a hidden overflow here would also clip the info-tip
+     popover nested inside `.stat-label`, which needs to escape this cell's
+     bounds to be readable. */
 }
 
 .stat:not(:last-child)::after {
@@ -87,73 +197,348 @@
   color: var(--danger);
 }
 
-.section-head {
+/* ----- Zone 2: Short-Term Liquidity ----------------------------------------- */
+
+.liquidity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+@media (max-width: 760px) {
+  .liquidity-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mini-card {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 0.6rem;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
-.section-head h2 {
-  font-size: 1rem;
+.mini-label {
+  font-size: 0.7rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.link {
-  font-size: 0.85rem;
+.mini-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.mini-value.positive {
+  color: var(--success);
+}
+
+.mini-value.negative {
+  color: var(--danger);
+}
+
+.mini-unit {
+  font-size: 0.8rem;
   font-weight: 600;
-  text-decoration: none;
 }
 
-.period-tag {
+.mini-cap {
   font-size: 0.75rem;
   font-weight: 600;
 }
 
-.period-select {
-  width: auto;
-  padding: 0.3rem 1.6rem 0.3rem 0.6rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--accent);
-  background-color: var(--surface-2);
+.meter-track {
+  position: relative;
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.1rem;
 }
 
-.range-tabs {
+.meter-zone {
+  height: 100%;
+}
+
+.meter-pointer {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+.meter-pointer::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.meter-scale {
   display: flex;
+  justify-content: space-between;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.debt-lines {
+  display: flex;
+  flex-direction: column;
   gap: 0.3rem;
+}
+
+.debt-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.debt-line-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debt-line b {
+  color: var(--danger);
+  font-weight: 700;
   flex-shrink: 0;
 }
 
-.range-tab {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 0.72rem;
+/* ----- Zone 3: Spending Pulse ----------------------------------------------- */
+
+.pulse-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+@media (min-width: 760px) {
+  .pulse-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.pulse-grid > .card {
+  display: flex;
+  flex-direction: column;
+}
+
+.widget-title {
+  font-size: 0.85rem;
   font-weight: 700;
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
-  cursor: pointer;
+  margin-bottom: 0.85rem;
 }
 
-.range-tab:hover:not(.active) {
-  color: var(--text);
+.widget-sub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-left: 0.35rem;
 }
 
-.range-tab.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
+.ring-row {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
 }
 
-.empty-state {
+/* Donut geometry reused as-is (see below); an overspent month gets a thin
+   danger-colored halo instead of letting the ring's own arcs silently sum
+   past a full turn. */
+.donut-wrap {
+  position: relative;
+  width: 116px;
+  height: 116px;
+  flex-shrink: 0;
+}
+
+.donut-wrap.overspent {
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(220 38 38 / 25%);
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.donut-track {
+  stroke: var(--surface-2);
+  stroke-width: 3.8;
+}
+
+.donut-segment {
+  stroke-width: 3.8;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
 }
 
-/* ----- Accounts ---------------------------------------------------------- */
+.donut-center-value {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.donut-center-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ring-legend {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.legend-row .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-row .amt {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.pace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.pace-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.pace-name {
+  width: 34%;
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pace-track {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.pace-track.dashed {
+  background: transparent;
+  border: 1.5px dashed var(--border);
+}
+
+.pace-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.pace-fill.band-under {
+  background: var(--success);
+}
+
+.pace-fill.band-on {
+  background: var(--warning);
+}
+
+.pace-fill.band-over {
+  background: var(--danger);
+}
+
+/* The "100% of baseline" tick - fixed at the same spot on every row's bar
+   (see `PACE_AXIS_MAX` in dashboard.ts), since only the fill varies. */
+.pace-mark {
+  position: absolute;
+  top: -3px;
+  left: 62.5%;
+  width: 1.5px;
+  height: 13px;
+  background: var(--text-muted);
+}
+
+.pace-pct {
+  width: 40px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.pace-pct.band-under {
+  color: var(--success);
+}
+
+.pace-pct.band-on {
+  color: var(--warning);
+}
+
+.pace-pct.band-over {
+  color: var(--danger);
+}
+
+/* ----- Zone 4: Accounts, split into Assets / Liabilities -------------------- */
+
+.acct-group-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0.9rem 0 0.5rem;
+}
+
+.acct-group-label:first-child {
+  margin-top: 0;
+}
 
 .account-grid {
   display: grid;
@@ -165,6 +550,15 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  border-left: 3px solid transparent;
+}
+
+.account-card.asset-card {
+  border-left-color: var(--success);
+}
+
+.account-card.liab-card {
+  border-left-color: var(--danger);
 }
 
 .acc-header {
@@ -199,251 +593,7 @@
   color: var(--danger);
 }
 
-/* ----- Two-column: spending breakdown + fixed deposits ------------------- */
-
-.dash-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-  align-items: stretch;
-}
-
-@media (min-width: 900px) {
-  .dash-grid {
-    grid-template-columns: 1.3fr 1fr;
-  }
-}
-
-/* Stretch each column's card to the row's tallest one (Spending by
-   Category's card is often much shorter than Fixed Deposits', or vice
-   versa, depending on how much each has to show) instead of leaving them
-   at their own natural, mismatched heights. */
-.dash-grid > section {
-  display: flex;
-  flex-direction: column;
-}
-
-.dash-grid > section > .card {
-  flex: 1;
-}
-
-.breakdown-card {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  flex-wrap: wrap;
-}
-
-.donut-wrap {
-  position: relative;
-  width: 130px;
-  height: 130px;
-  flex-shrink: 0;
-  margin: 0 auto;
-}
-
-.donut-svg {
-  width: 100%;
-  height: 100%;
-}
-
-.donut-track {
-  stroke: var(--surface-2);
-  stroke-width: 3.8;
-}
-
-.donut-segment {
-  stroke-width: 3.8;
-}
-
-.donut-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  pointer-events: none;
-}
-
-.donut-center-value {
-  font-size: 0.95rem;
-  font-weight: 800;
-}
-
-.donut-center-label {
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.breakdown-list {
-  flex: 1;
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-/* ----- Cash flow (income vs. expense, last few months) -------------------- */
-
-.cash-flow-legend {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 0.85rem;
-  font-size: 0.78rem;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.legend-dot.income {
-  background: var(--success);
-}
-
-.legend-dot.expense {
-  background: var(--danger);
-}
-
-.legend-dot.commitment {
-  background: var(--commitment);
-}
-
-.cash-flow-chart {
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 0.4rem;
-  height: 160px;
-}
-
-.cash-flow-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.cash-flow-bars {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 3px;
-  width: 100%;
-}
-
-.cash-flow-bar {
-  width: 28%;
-  max-width: 14px;
-  border-radius: 4px 4px 0 0;
-  min-height: 2px;
-}
-
-.cash-flow-bar.income {
-  background: var(--success);
-}
-
-.cash-flow-bar.expense {
-  background: var(--danger);
-}
-
-.cash-flow-bar.commitment {
-  background: var(--commitment);
-}
-
-.cash-flow-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.breakdown-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.breakdown-top {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-
-.breakdown-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.breakdown-name {
-  flex: 1;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.breakdown-amount {
-  font-weight: 700;
-}
-
-.breakdown-bar-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-
-.breakdown-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-/* ----- Fixed deposits summary --------------------------------------------- */
-
-.fd-summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  padding: 1.1rem;
-}
-
-.fd-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.fd-total-value,
-.fd-next-bank {
-  font-size: 1.15rem;
-  font-weight: 800;
-}
-
-.fd-count,
-.fd-next-date {
-  font-size: 0.78rem;
-}
-
-/* ----- Recent transactions (mirrors the Transactions page's row style) --- */
+/* ----- Zone 5: Recent Activity ---------------------------------------------- */
 
 .tx-list {
   padding: 0.3rem;
@@ -459,6 +609,16 @@
 
 .tx-row:last-child {
   border-bottom: none;
+}
+
+/* Left-edge accent per transaction *type* (see `typeAccent()`) - lets an
+   Uncategorized entry still read as income/commitment/expense/others at a
+   glance, instead of relying solely on the amount's sign/color. */
+.tx-accent {
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .tx-date-badge {

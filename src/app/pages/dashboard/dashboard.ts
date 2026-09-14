@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { StateService } from '../../core/state.service';
@@ -7,74 +7,131 @@ import { CURRENCIES, Transaction } from '../../core/models';
 import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
 import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
+import { InfoTipComponent } from '../../shared/info-tip';
 
 const CATEGORY_COLOR_FALLBACK = '#94A3B8';
-const OTHER_SLICE_COLOR = '#78716C';
-/** How many individual categories to break out before lumping the rest into "Other". */
-const TOP_CATEGORY_COUNT = 5;
-/** How many transactions to show in the Recent Transactions list. */
-const RECENT_COUNT = 6;
+/** How many transactions to show in the Recent Activity list - tightened
+ * from the old 6 so the hero-to-fold distance on a fresh load stays short;
+ * "See all" is one tap away on the Transactions page. */
+const RECENT_COUNT = 5;
+/** How many days of daily liquid-cash history the hero sparkline plots. */
+const SPARKLINE_DAYS = 30;
+/** How many trailing *completed* calendar months (this month excluded)
+ * Average Monthly Burn and each category's pace baseline are computed
+ * over - capped by however much history the account actually has, via
+ * `earliestMonthOf`, so a 2-week-old file doesn't get dragged toward zero
+ * by months before any data existed. */
+const TRAILING_MONTHS = 3;
+/** How many categories Category Pace surfaces - deliberately smaller than
+ * the old Spending by Category donut's top-5-then-Other, since this widget
+ * is meant to be skimmed as a glance, not read as a breakdown. */
+const PACE_TOP_COUNT = 4;
+/** Fixed axis a Category Pace bar is drawn against: 0-160% of baseline,
+ * with the "100% of baseline" tick always at the same spot (100/160 =
+ * 62.5%, set once in `dashboard.scss` on `.pace-mark`) - a bar's *fill*
+ * width still varies per row, but the tick never has to move, since it's
+ * marking the same 100% point on the same scale every time. A pace over
+ * the axis max still fills the full bar rather than overflowing it. */
+const PACE_AXIS_MAX = 160;
+/** Circumference of the donut's SVG circle when its radius is 15.9155 -
+ * the standard "no-library donut chart" trick, so a percentage (0-100) can
+ * be used directly as a stroke-dasharray/dashoffset value. Shared by the
+ * Savings Rate ring below. */
+const DONUT_CIRCUMFERENCE = 100;
 
-interface CategorySlice {
+interface MonthlyStats {
+  income: number;
+  expense: number;
+  commitment: number;
+  net: number;
+}
+
+interface SparklinePoint {
+  x: number;
+  y: number;
+}
+
+interface CashSparkline {
+  linePath: string;
+  areaPath: string;
+  endPoint: SparklinePoint | null;
+  deltaLabel: string;
+  deltaPositive: boolean;
+}
+
+type RunwayBand = 'critical' | 'caution' | 'safe' | 'unknown';
+
+interface CashRunway {
+  label: string;
+  band: RunwayBand;
+  pointerPercent: number;
+  burnMonthsCounted: number;
+}
+
+interface CardDebtLine {
   id: string;
   name: string;
   color: string;
   amount: number;
-  percent: number;
 }
 
-/** A `CategorySlice` plus the two SVG `stroke-dasharray`/`stroke-dashoffset`
- * values that draw its arc of the donut chart - see `categoryDonutSegments`. */
-interface DonutSegment extends CategorySlice {
+interface CardDebtSummary {
+  total: number;
+  lines: CardDebtLine[];
+}
+
+interface RingSegment {
+  key: 'committed' | 'variable' | 'saved';
+  color: string;
   dashArray: string;
   offset: number;
 }
 
-interface MonthFlow {
-  key: string;
-  label: string;
-  income: number;
-  expense: number;
-  commitment: number;
+interface SavingsRate {
+  hasIncome: boolean;
+  ratePct: number | null;
+  overspent: boolean;
+  committedAmt: number;
+  variableAmt: number;
+  savedAmt: number;
+  segments: RingSegment[];
 }
 
-/** How many months of history the Cash Flow chart shows by default - the
- * user can widen or narrow this with the range selector (`cashFlowRange`). */
-const DEFAULT_CASH_FLOW_MONTHS = 6;
-/** Options offered by the Cash Flow chart's range selector. */
-export const CASH_FLOW_RANGE_OPTIONS = [3, 6, 12] as const;
-export type CashFlowRange = (typeof CASH_FLOW_RANGE_OPTIONS)[number];
+type PaceBand = 'under' | 'on' | 'over' | 'new';
 
-/** Options offered by the Spending by Category period selector. */
-export const CATEGORY_PERIOD_OPTIONS = ['this-month', 'last-month', 'this-year', 'all-time'] as const;
-export type CategoryPeriod = (typeof CATEGORY_PERIOD_OPTIONS)[number];
+interface CategoryPaceRow {
+  id: string;
+  name: string;
+  color: string;
+  current: number;
+  baseline: number | null;
+  pct: number | null;
+  band: PaceBand;
+}
 
-const CATEGORY_PERIOD_LABELS: Record<CategoryPeriod, string> = {
-  'this-month': 'This Month',
-  'last-month': 'Last Month',
-  'this-year': 'This Year',
-  'all-time': 'All Time',
-};
-/** Full empty-state sentence per period, since "yet" only reads naturally
- * for the periods that include the present (This Month/This Year) - "Last
- * Month" and "All Time" are complete/unbounded, so tacking "yet" onto them
- * would misleadingly suggest more could still show up. */
-const CATEGORY_PERIOD_EMPTY_TEXT: Record<CategoryPeriod, string> = {
-  'this-month': 'No expenses recorded this month yet.',
-  'last-month': 'No expenses recorded last month.',
-  'this-year': 'No expenses recorded this year yet.',
-  'all-time': 'No expenses recorded yet.',
-};
-/** Circumference of the donut's SVG circle when its radius is 15.9155 -
- * chosen (the standard "no-library donut chart" trick) specifically so a
- * percentage (0-100) can be used directly as a stroke-dasharray/dashoffset
- * value instead of a real arc-length calculation. */
-const DONUT_CIRCUMFERENCE = 100;
+/** Whole days between `dateStr` and `from` (positive = in the future,
+ * negative = overdue) - calendar-day difference, not a raw 24h-multiple
+ * diff, so "tomorrow" reads correctly regardless of time of day. */
+function daysUntil(dateStr: string, from: Date = new Date()): number {
+  const target = new Date(`${dateStr}T00:00:00`);
+  const today = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** "in 12 days" / "tomorrow" / "today" / "3 days overdue" for a maturity
+ * countdown chip - a date alone takes a beat of mental math to place on a
+ * timeline, a countdown doesn't. */
+function maturityCountdownLabel(days: number): string {
+  if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`;
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  return `in ${days} days`;
+}
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, IconComponent, FormsModule],
+  imports: [RouterLink, IconComponent, FormsModule, InfoTipComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
@@ -82,207 +139,174 @@ const DONUT_CIRCUMFERENCE = 100;
 export class DashboardPage {
   constructor(readonly state: StateService) {}
 
-  readonly categoryPeriod = signal<CategoryPeriod>('this-month');
-  readonly categoryPeriodOptions = CATEGORY_PERIOD_OPTIONS;
-  readonly categoryPeriodLabels = CATEGORY_PERIOD_LABELS;
-  readonly categoryPeriodEmptyText = computed(() => CATEGORY_PERIOD_EMPTY_TEXT[this.categoryPeriod()]);
-
-  readonly cashFlowRange = signal<CashFlowRange>(DEFAULT_CASH_FLOW_MONTHS);
-  readonly cashFlowRangeOptions = CASH_FLOW_RANGE_OPTIONS;
-
-  readonly netWorthLabel = computed(() =>
-    formatMoney(this.state.netWorth(), this.state.state()!.settings.currency),
-  );
-
   readonly currencySymbol = computed(() => {
     const currency = this.state.state()?.settings.currency;
     return CURRENCIES.find((c) => c.value === currency)?.symbol ?? '';
   });
 
-  /** Income/expense/commitment/net for the real current calendar month - a
-   * fixed, glanceable "how am I doing right now", separate from the
-   * Transactions page's own navigable month filter. Commitment (fixed,
-   * recurring obligations - see `TransactionType`) is broken out from
-   * Expense but still reduces `net` the same way, since it's still money
-   * that's gone.
-   *
-   * Deliberately does NOT fold in Fixed Deposit principal movement:
-   * `StateService.netWorth` now counts an active FD's principal as part of
-   * your total wealth (see `activeFixedDepositTotal`), so placing or
-   * maturing one just moves money between "in an account" and "locked in
-   * an FD" - it doesn't gain or lose you anything, and shouldn't move this
-   * figure either. Only the FD's actual interest/gains should - and that
-   * already flows through `income` as normal, since `updateFixedDeposit`
-   * books it as a plain "income" transaction. */
-  readonly monthlyStats = computed(() => {
+  // ----- Zone 1: Cash Position -------------------------------------------
+
+  /** Liquid = spendable now - Banks, Wallets, the Cash bucket and the
+   * Others bucket. Deliberately excludes Cards: a card's balance is what
+   * you owe (see `StateService.accountBalances`'s sign convention), not
+   * money you have, so folding it in here would overstate what's actually
+   * available to spend. This is the Dashboard's hero figure. */
+  readonly liquidAccounts = computed(() => this.state.accountBalances().filter((a) => a.kind !== 'card'));
+  readonly cardAccounts = computed(() => this.state.accountBalances().filter((a) => a.kind === 'card'));
+
+  readonly liquidCash = computed(() => this.liquidAccounts().reduce((sum, a) => sum + a.balance, 0));
+
+  readonly liquidCashLabel = computed(() => this.money(this.liquidCash()));
+  readonly netWorthLabel = computed(() => this.money(this.state.netWorth()));
+
+  /** Daily liquid-cash history for the last `SPARKLINE_DAYS` days, walked
+   * forward from a reconstructed starting balance (today's liquid cash
+   * minus every liquid-affecting transaction inside the window) rather
+   * than recomputed from scratch per day - one pass over transactions
+   * either way, but this keeps the "today" endpoint exactly equal to
+   * `liquidCash()` by construction instead of by coincidence. */
+  readonly cashSparkline = computed<CashSparkline>(() => {
+    const empty: CashSparkline = { linePath: '', areaPath: '', endPoint: null, deltaLabel: '', deltaPositive: true };
     const s = this.state.state();
-    if (!s) return { income: 0, expense: 0, commitment: 0, net: 0 };
-    const monthKey = monthKeyOf();
-    let income = 0;
-    let expense = 0;
-    let commitment = 0;
+    if (!s) return empty;
+
+    const today = new Date();
+    const dateKeys: string[] = [];
+    for (let i = SPARKLINE_DAYS - 1; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+      dateKeys.push(monthKeyOf(d) + '-' + String(d.getDate()).padStart(2, '0'));
+    }
+    const windowStart = dateKeys[0];
+    const todayKey = dateKeys[dateKeys.length - 1];
+
+    const deltaByDate = new Map<string, number>(dateKeys.map((k) => [k, 0]));
+    let windowSum = 0;
     for (const t of s.transactions) {
-      if (t.date.slice(0, 7) !== monthKey) continue;
-      if (t.type === 'income') income += t.amount;
-      else if (t.type === 'expense') expense += t.amount;
-      else if (t.type === 'commitment') commitment += t.amount;
-    }
-    return { income, expense, commitment, net: income - expense - commitment };
-  });
-
-  readonly netWorthDeltaPositive = computed(() => this.monthlyStats().net >= 0);
-
-  readonly netWorthDeltaLabel = computed(() => {
-    const net = this.monthlyStats().net;
-    const sign = net >= 0 ? '+' : '-';
-    return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))} this month`;
-  });
-
-  /** "Net This Month" stat value - sign-then-symbol-then-magnitude, same
-   * pattern as `netWorthDeltaLabel` (and the fix in `formatMoney`): the
-   * symbol always comes before the digits, and any minus sign always comes
-   * before the symbol, rather than a `currencySymbol() + numberPart(net)`
-   * concatenation that (for a negative `net`) would sandwich the minus
-   * sign that `formatAmountNumber` itself produces between the two,
-   * e.g. "RM-500.00" instead of "-RM500.00". */
-  readonly netStatLabel = computed(() => {
-    const net = this.monthlyStats().net;
-    const sign = net < 0 ? '-' : '';
-    return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
-  });
-
-  /** Whether a transaction date falls within the currently-selected
-   * `categoryPeriod` - factored out of `categoryBreakdown` so the period
-   * logic (what "This Month"/"Last Month"/"This Year"/"All Time" actually
-   * mean in terms of date-string comparisons) lives in one place. */
-  private matchesCategoryPeriod(dateStr: string): boolean {
-    const period = this.categoryPeriod();
-    if (period === 'all-time') return true;
-    if (period === 'this-year') return dateStr.slice(0, 4) === String(new Date().getFullYear());
-    const now = new Date();
-    const target =
-      period === 'last-month'
-        ? monthKeyOf(new Date(now.getFullYear(), now.getMonth() - 1, 1))
-        : monthKeyOf(now);
-    return dateStr.slice(0, 7) === target;
-  }
-
-  /** Expenses grouped by category for the selected `categoryPeriod`, sorted
-   * largest first, with anything past the top few folded into a single
-   * "Other" slice - the classic "where did my money go" dashboard widget.
-   * Deliberately `type: 'expense'` only, not Commitment too - this widget is
-   * about discretionary/variable spending; fixed commitments have their own
-   * breakdown on the Financial Report ("Fixed Commitments Analysis") rather
-   * than being mixed in here. */
-  readonly categoryBreakdown = computed<{ items: CategorySlice[]; total: number }>(() => {
-    const s = this.state.state();
-    if (!s) return { items: [], total: 0 };
-    const totals = new Map<string, number>();
-    for (const t of s.transactions) {
-      if (t.type !== 'expense' || !this.matchesCategoryPeriod(t.date)) continue;
-      const key = t.categoryId ?? '__uncategorized__';
-      totals.set(key, (totals.get(key) ?? 0) + t.amount);
+      if (t.accountType === 'card') continue;
+      if (t.date < windowStart || t.date > todayKey) continue;
+      const signed = t.type === 'income' || t.type === 'others-in' ? t.amount : -t.amount;
+      windowSum += signed;
+      deltaByDate.set(t.date, (deltaByDate.get(t.date) ?? 0) + signed);
     }
 
-    const rows = [...totals.entries()]
-      .map(([id, amount]) => {
-        if (id === '__uncategorized__') {
-          return { id, name: 'Uncategorized', color: CATEGORY_COLOR_FALLBACK, amount };
-        }
-        const cat = s.categories.find((c) => c.id === id);
-        return {
-          id,
-          name: cat?.name ?? 'Uncategorized',
-          color: cat?.color ?? CATEGORY_COLOR_FALLBACK,
-          amount,
-        };
-      })
-      .sort((a, b) => b.amount - a.amount);
+    const current = this.liquidCash();
+    let running = current - windowSum;
+    const values = dateKeys.map((k) => {
+      running += deltaByDate.get(k) ?? 0;
+      return running;
+    });
 
-    const total = rows.reduce((sum, r) => sum + r.amount, 0);
-    let items = rows.slice(0, TOP_CATEGORY_COUNT);
-    const rest = rows.slice(TOP_CATEGORY_COUNT);
-    if (rest.length > 0) {
-      items = [
-        ...items,
-        { id: '__other__', name: 'Other', color: OTHER_SLICE_COLOR, amount: rest.reduce((s2, r) => s2 + r.amount, 0) },
-      ];
-    }
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const width = 300;
+    const height = 60;
+    const pad = 6;
+    const stepX = (width - pad * 2) / (values.length - 1);
+    const points = values.map((v, i) => ({
+      x: pad + i * stepX,
+      y: height - pad - ((v - min) / range) * (height - pad * 2),
+    }));
 
+    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const areaPath = `${linePath} L${points[points.length - 1].x.toFixed(1)},${height - pad} L${points[0].x.toFixed(1)},${height - pad} Z`;
+
+    const delta = values[values.length - 1] - values[0];
+    const sign = delta < 0 ? '-' : '+';
     return {
-      items: items.map((r) => ({ ...r, percent: total > 0 ? (r.amount / total) * 100 : 0 })),
-      total,
+      linePath,
+      areaPath,
+      endPoint: points[points.length - 1],
+      deltaLabel: `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(delta))} · last ${SPARKLINE_DAYS} days`,
+      deltaPositive: delta >= 0,
     };
   });
 
-  /** `categoryBreakdown`'s slices, redrawn as donut-chart arcs. Each
-   * `<circle>` in the template is stroked with `stroke-dasharray="dash
-   * (100-dash)"` and `stroke-dashoffset="offset"` - offset starts at 25 (a
-   * quarter-turn, since the browser draws circles starting at 3 o'clock)
-   * and decreases by each prior slice's share, so consecutive slices chain
-   * around the ring clockwise from 12 o'clock with no gaps. */
-  readonly categoryDonutSegments = computed<DonutSegment[]>(() => {
-    let cumulative = 0;
-    return this.categoryBreakdown().items.map((slice) => {
-      const dash = slice.percent;
-      const offset = DONUT_CIRCUMFERENCE / 4 - cumulative;
-      cumulative += dash;
-      return {
-        ...slice,
-        dashArray: `${dash} ${DONUT_CIRCUMFERENCE - dash}`,
-        offset,
-      };
-    });
-  });
+  // ----- Zone 2: Short-Term Liquidity -------------------------------------
 
-  /** Income vs. expense vs. commitment for each of the last `cashFlowRange()`
-   * months (this one included), oldest first, plus the largest single bar
-   * value so the template can scale every bar to the same axis. Always
-   * returns exactly `cashFlowRange()` entries, even for months with no
-   * activity, so the chart's x-axis is stable rather than shrinking when
-   * recent months are quiet. A three-series chart - Commitment gets its own
-   * bar/color alongside Income and Expense, same breakdown as the stats-bar
-   * and `monthlyStats()` above. */
-  readonly cashFlowTrend = computed<{ months: MonthFlow[]; max: number }>(() => {
+  /** 'YYYY-MM' key of this account's very first transaction, or the current
+   * month if there are no transactions yet - the floor that keeps
+   * `avgMonthlyBurn` and `categoryPace` from averaging in months before any
+   * data existed. */
+  private readonly earliestMonth = computed(() => {
     const s = this.state.state();
-    const now = new Date();
-    const buckets = new Map<string, { income: number; expense: number; commitment: number }>();
-    const keys: string[] = [];
-    for (let i = this.cashFlowRange() - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = monthKeyOf(d);
-      keys.push(key);
-      buckets.set(key, { income: 0, expense: 0, commitment: 0 });
-    }
-    for (const t of s?.transactions ?? []) {
-      const bucket = buckets.get(t.date.slice(0, 7));
-      if (!bucket) continue;
-      if (t.type === 'income') bucket.income += t.amount;
-      else if (t.type === 'expense') bucket.expense += t.amount;
-      else if (t.type === 'commitment') bucket.commitment += t.amount;
-    }
-    // Wider ranges (12M) can span a Jan 1 boundary, where "Oct … Jan …
-    // Sep" reads as one ambiguous year - show the year on the first bar
-    // and on every January after it, like a typical time-series axis,
-    // rather than cluttering every single label with it.
-    let prevYear: number | null = null;
-    const months = keys.map((key) => {
-      const b = buckets.get(key)!;
-      const date = new Date(`${key}-01T00:00:00`);
-      const year = date.getFullYear();
-      const showYear = prevYear === null || year !== prevYear;
-      prevYear = year;
-      const month = date.toLocaleDateString(undefined, { month: 'short' });
-      const label = showYear ? `${month} '${String(year).slice(-2)}` : month;
-      return { key, label, income: b.income, expense: b.expense, commitment: b.commitment };
-    });
-    const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense, m.commitment]));
-    return { months, max };
+    if (!s || s.transactions.length === 0) return monthKeyOf();
+    return s.transactions.reduce((min, t) => (t.date.slice(0, 7) < min ? t.date.slice(0, 7) : min), s.transactions[0].date.slice(0, 7));
   });
 
-  readonly hasCashFlowActivity = computed(() =>
-    this.cashFlowTrend().months.some((m) => m.income > 0 || m.expense > 0 || m.commitment > 0),
-  );
+  /** The last `TRAILING_MONTHS` *completed* calendar months (this month
+   * excluded, floored at `earliestMonth`) as 'YYYY-MM' keys - the shared
+   * trailing window both `avgMonthlyBurn` and `categoryPace` average over,
+   * so the two widgets can never silently disagree on how many months of
+   * history they're each basing themselves on. Exposed as
+   * `trailingMonthsCounted` for the Category Pace caption. */
+  private readonly trailingMonthKeys = computed<string[]>(() => {
+    const earliest = this.earliestMonth();
+    const now = new Date();
+    const keys: string[] = [];
+    for (let i = 1; i <= TRAILING_MONTHS; i++) {
+      const key = monthKeyOf(new Date(now.getFullYear(), now.getMonth() - i, 1));
+      if (key >= earliest) keys.push(key);
+    }
+    return keys;
+  });
+
+  readonly trailingMonthsCounted = computed(() => this.trailingMonthKeys().length);
+
+  /** Mean of (Expense + Commitment) over `trailingMonthKeys()` - this month
+   * itself is deliberately excluded, since a partial month would
+   * understate burn early on and overstate it once spending catches up.
+   * `monthsCounted` may be less than `TRAILING_MONTHS` for a newer
+   * account; callers show their work ("based on N months") instead of
+   * silently padding with zeros. */
+  readonly avgMonthlyBurn = computed<{ amount: number; monthsCounted: number }>(() => {
+    const s = this.state.state();
+    const keys = this.trailingMonthKeys();
+    if (!s || keys.length === 0) return { amount: 0, monthsCounted: 0 };
+    const keySet = new Set(keys);
+    let total = 0;
+    for (const t of s.transactions) {
+      if (!keySet.has(t.date.slice(0, 7))) continue;
+      if (t.type === 'expense' || t.type === 'commitment') total += t.amount;
+    }
+    return { amount: total / keys.length, monthsCounted: keys.length };
+  });
+
+  /** Available Cash ÷ Average Monthly Burn, in months. Three guarded
+   * outcomes besides the plain number: no burn history at all yet ("—",
+   * unknown), zero burn ("∞", safe), and cash already at or below zero
+   * ("0.0", critical) - see the Formula & Filter section of the design
+   * blueprint this implements. `pointerPercent` positions the meter's
+   * pointer on a 0-6-month band scale, capped at 6+. */
+  readonly cashRunway = computed<CashRunway>(() => {
+    const burn = this.avgMonthlyBurn();
+    if (burn.monthsCounted === 0) {
+      return { label: '—', band: 'unknown', pointerPercent: 0, burnMonthsCounted: 0 };
+    }
+    if (burn.amount <= 0) {
+      return { label: '∞', band: 'safe', pointerPercent: 100, burnMonthsCounted: burn.monthsCounted };
+    }
+    const liquid = this.liquidCash();
+    if (liquid <= 0) {
+      return { label: '0.0', band: 'critical', pointerPercent: 0, burnMonthsCounted: burn.monthsCounted };
+    }
+    const months = liquid / burn.amount;
+    const label = months >= 99.95 ? '99+' : months.toFixed(1);
+    const band: RunwayBand = months < 1 ? 'critical' : months < 3 ? 'caution' : 'safe';
+    return { label, band, pointerPercent: (Math.min(months, 6) / 6) * 100, burnMonthsCounted: burn.monthsCounted };
+  });
+
+  /** Cards currently in debt (a negative balance), worst first - a card
+   * sitting in credit contributes nothing here (it's not owed money) and
+   * is left to show its plain positive balance in the Accounts grid. */
+  readonly cardDebt = computed<CardDebtSummary>(() => {
+    const inDebt = this.cardAccounts().filter((a) => a.balance < 0);
+    const sorted = [...inDebt].sort((a, b) => a.balance - b.balance);
+    return {
+      total: sorted.reduce((sum, a) => sum + -a.balance, 0),
+      lines: sorted.slice(0, 3).map((a) => ({ id: a.id, name: a.name, color: a.color, amount: -a.balance })),
+    };
+  });
 
   /** Active fixed deposits: total principal locked away, plus whichever
    * one matures soonest, so the dashboard surfaces "when do I get money
@@ -304,8 +328,147 @@ export class DashboardPage {
       nextBankName: s?.banks.find((b) => b.id === next.fd.bankId)?.name ?? '—',
       nextMaturityDate: next.maturity,
       nextMaturityValue: fdMaturityValue(next.fd),
+      nextMaturityCountdown: maturityCountdownLabel(daysUntil(next.maturity)),
     };
   });
+
+  // ----- Zone 3: Spending Pulse -------------------------------------------
+
+  /** Income/expense/commitment/net for the real current calendar month - a
+   * fixed, glanceable "how am I doing right now". Deliberately does NOT
+   * fold in Fixed Deposit/Investment principal movement (booked as
+   * `others-in`/`others-out`): those just move money between "in an
+   * account" and "locked away", they don't earn or spend it. */
+  readonly monthlyStats = computed<MonthlyStats>(() => {
+    const s = this.state.state();
+    if (!s) return { income: 0, expense: 0, commitment: 0, net: 0 };
+    const monthKey = monthKeyOf();
+    let income = 0;
+    let expense = 0;
+    let commitment = 0;
+    for (const t of s.transactions) {
+      if (t.date.slice(0, 7) !== monthKey) continue;
+      if (t.type === 'income') income += t.amount;
+      else if (t.type === 'expense') expense += t.amount;
+      else if (t.type === 'commitment') commitment += t.amount;
+    }
+    return { income, expense, commitment, net: income - expense - commitment };
+  });
+
+  readonly netStatLabel = computed(() => {
+    const net = this.monthlyStats().net;
+    const sign = net < 0 ? '-' : '';
+    return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
+  });
+
+  /** Savings Rate ring: Committed / Variable / Saved as shares of this
+   * month's Income. When Committed+Variable together exceed Income, the
+   * three segments are scaled down proportionally so the ring still draws
+   * a clean 100% instead of silently overflowing past a full turn -
+   * `overspent` flags this case so the template can show a distinct
+   * "Overspent" state instead of a ring that quietly wraps on itself.
+   * `ratePct` (the center label) is the *unscaled* real savings rate and
+   * can go negative - only the drawn segments are ever capped. */
+  readonly savingsRate = computed<SavingsRate>(() => {
+    const { income, expense, commitment, net } = this.monthlyStats();
+    if (income <= 0) {
+      return {
+        hasIncome: false,
+        ratePct: null,
+        overspent: false,
+        committedAmt: commitment,
+        variableAmt: expense,
+        savedAmt: net,
+        segments: [],
+      };
+    }
+
+    const committedRaw = (commitment / income) * 100;
+    const variableRaw = (expense / income) * 100;
+    const usedRaw = committedRaw + variableRaw;
+    const overspent = usedRaw > 100;
+    const scale = overspent ? 100 / usedRaw : 1;
+    const committedPct = committedRaw * scale;
+    const variablePct = variableRaw * scale;
+    const savedPct = overspent ? 0 : Math.max(0, 100 - committedRaw - variableRaw);
+
+    let cumulative = 0;
+    const drawSegment = (key: RingSegment['key'], color: string, pct: number): RingSegment => {
+      const offset = DONUT_CIRCUMFERENCE / 4 - cumulative;
+      cumulative += pct;
+      return { key, color, dashArray: `${pct} ${DONUT_CIRCUMFERENCE - pct}`, offset };
+    };
+
+    return {
+      hasIncome: true,
+      ratePct: (net / income) * 100,
+      overspent,
+      committedAmt: commitment,
+      variableAmt: expense,
+      savedAmt: net,
+      segments: [
+        drawSegment('committed', 'var(--commitment)', committedPct),
+        drawSegment('variable', 'var(--danger)', variablePct),
+        drawSegment('saved', 'var(--success)', savedPct),
+      ],
+    };
+  });
+
+  /** Top `PACE_TOP_COUNT` expense categories by this month's spend, each
+   * against its own baseline over `trailingMonthKeys()` (zero-filled for
+   * quiet months within the account's history - the same shared trailing
+   * window `avgMonthlyBurn` uses, so the Liquidity row and this widget
+   * always agree on "how many months of history" they're each showing).
+   * A category with no baseline history yet gets `band: 'new'` instead of
+   * a fabricated ratio - deliberately `type: 'expense'` only, same
+   * "discretionary/variable spend" scope as the widget it replaces. One
+   * pass over transactions rather than one pass per category, to stay
+   * linear in transaction count regardless of how many categories exist. */
+  readonly categoryPace = computed<CategoryPaceRow[]>(() => {
+    const s = this.state.state();
+    const trailingKeys = this.trailingMonthKeys();
+    if (!s || s.transactions.length === 0) return [];
+
+    const currentMonthKey = monthKeyOf();
+    const trailingSet = new Set(trailingKeys);
+
+    const currentTotals = new Map<string, number>();
+    const trailingTotals = new Map<string, number>();
+    for (const t of s.transactions) {
+      if (t.type !== 'expense') continue;
+      const monthKey = t.date.slice(0, 7);
+      const catKey = t.categoryId ?? '__uncategorized__';
+      if (monthKey === currentMonthKey) {
+        currentTotals.set(catKey, (currentTotals.get(catKey) ?? 0) + t.amount);
+      } else if (trailingSet.has(monthKey)) {
+        trailingTotals.set(catKey, (trailingTotals.get(catKey) ?? 0) + t.amount);
+      }
+    }
+
+    const topIds = [...currentTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, PACE_TOP_COUNT)
+      .map(([id]) => id);
+
+    return topIds.map((id) => {
+      const current = currentTotals.get(id) ?? 0;
+      const baseline = trailingKeys.length > 0 ? (trailingTotals.get(id) ?? 0) / trailingKeys.length : null;
+      const pct = baseline !== null && baseline > 0 ? (current / baseline) * 100 : null;
+      const cat = id === '__uncategorized__' ? undefined : s.categories.find((c) => c.id === id);
+      const band: PaceBand = pct === null ? 'new' : pct > 110 ? 'over' : pct < 80 ? 'under' : 'on';
+      return {
+        id,
+        name: cat?.name ?? 'Uncategorized',
+        color: cat?.color ?? CATEGORY_COLOR_FALLBACK,
+        current,
+        baseline,
+        pct,
+        band,
+      };
+    });
+  });
+
+  // ----- Zone 5: Recent Activity -------------------------------------------
 
   readonly recentTransactions = computed(() =>
     [...(this.state.state()?.transactions ?? [])]
@@ -314,19 +477,46 @@ export class DashboardPage {
       .slice(0, RECENT_COUNT),
   );
 
+  /** Left-edge accent color per transaction *type* (not category) so a
+   * transaction's kind reads at a glance even when it's Uncategorized -
+   * today only the amount's sign hints at this, and expense/commitment/
+   * others-out are visually indistinguishable from each other. */
+  typeAccent(t: Transaction): string {
+    switch (t.type) {
+      case 'income':
+        return 'var(--success)';
+      case 'commitment':
+        return 'var(--commitment)';
+      case 'others-in':
+      case 'others-out':
+        return 'var(--accent)';
+      default:
+        return 'var(--danger)';
+    }
+  }
+
   money(amount: number): string {
     return formatMoney(amount, this.state.state()!.settings.currency);
   }
 
-  /** A bar's height as a percentage of the chart's tallest bar (`max`), for
-   * the Cash Flow chart. Guards the `max === 0` case (no activity at all
-   * in any of the charted months) so bars come out at 0% instead of NaN%. */
-  barHeightPercent(value: number, max: number): number {
-    return max > 0 ? (value / max) * 100 : 0;
-  }
-
   numberPart(amount: number): string {
     return formatAmountNumber(amount);
+  }
+
+  /** Whole-number percentage for a ring/pace label - `null` (no income, or
+   * no baseline yet) renders as "0" rather than leaving the template to
+   * juggle a nullable number. */
+  pct0(value: number | null): string {
+    return value === null ? '0' : Math.round(value).toString();
+  }
+
+  /** A Category Pace row's fill width against the fixed `PACE_AXIS_MAX`
+   * scale (see its doc comment) - capped at 100% of the bar itself so a
+   * category running well over its baseline still renders as a full bar
+   * plus its (uncapped) percentage label, not an overflowing one. */
+  paceFillPercent(row: CategoryPaceRow): number {
+    if (row.pct === null) return 0;
+    return Math.min(row.pct, PACE_AXIS_MAX) / PACE_AXIS_MAX * 100;
   }
 
   dateBadge(dateStr: string): { day: string; month: string } {
