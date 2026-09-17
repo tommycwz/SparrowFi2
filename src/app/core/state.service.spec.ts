@@ -264,6 +264,75 @@ describe('StateService.netWorth with active fixed deposits', () => {
   });
 });
 
+describe('StateService.activeFixedDepositTotalAsOf', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addFixedDeposit({
+      startDate: '2026-01-01',
+      amount: 2000,
+      percentage: 5,
+      months: 6, // matures 2026-07-01
+      status: 'active',
+    });
+  });
+
+  it("is 0 for a date before the FD's start date - it hadn't been placed yet", () => {
+    expect(service.activeFixedDepositTotalAsOf('2025-12-31')).toBe(0);
+  });
+
+  it('counts the principal for a date the FD was locked for, regardless of what happened to it since', () => {
+    expect(service.activeFixedDepositTotalAsOf('2026-03-01')).toBe(2000);
+  });
+
+  it("is 0 once past the FD's natural maturity date, even if today it's still marked active (not yet rolled over)", () => {
+    expect(service.activeFixedDepositTotalAsOf('2026-07-01')).toBe(0);
+  });
+
+  it('excludes a withdrawn FD entirely, since an early withdrawal has no recorded date to reconstruct from', () => {
+    const fd = service.state()!.fixedDeposits[0];
+    service.updateFixedDeposit(fd.id, { status: 'withdrawn' });
+
+    // Even for a date well within what would have been its locked window.
+    expect(service.activeFixedDepositTotalAsOf('2026-03-01')).toBe(0);
+  });
+});
+
+describe('StateService.accountBalancesAsOf', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 1000 });
+  });
+
+  function bankId(name: string): string {
+    return service.state()!.banks.find((b) => b.name === name)!.id;
+  }
+
+  it('reconstructs a past balance using only transactions dated on or before that date', () => {
+    service.addTransaction({ date: '2026-03-01', amount: 200, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') });
+    service.addTransaction({ date: '2026-06-01', amount: 500, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') });
+
+    // Only the initial capital + the March transaction should count for a
+    // cutoff before the June one.
+    const balance = service.accountBalancesAsOf('2026-04-30').find((a) => a.id === bankId('Main Bank'));
+    expect(balance!.balance).toBe(1000 + 200);
+  });
+
+  it('matches accountBalances() (today\'s live figures) when the cutoff is today', () => {
+    service.addTransaction({ date: '2026-03-01', amount: 200, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') });
+    const today = new Date().toISOString().slice(0, 10);
+
+    expect(service.accountBalancesAsOf(today)).toEqual(service.accountBalances());
+  });
+});
+
 describe('StateService investment <-> transaction linking', () => {
   let service: StateService;
 
@@ -631,6 +700,76 @@ describe('StateService.netWorth with active investments', () => {
     service.completeInvestment(inv.id, '2026-06-01', 1500);
 
     expect(service.netWorth()).toBeCloseTo(beforeOpening - 500);
+  });
+});
+
+describe('StateService.activeInvestmentTotalAsOf', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 5000 });
+  });
+
+  function bankId(name: string): string {
+    return service.state()!.banks.find((b) => b.name === name)!.id;
+  }
+
+  it("is 0 for a date before the investment's own start date - it hadn't been made yet", () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-03-01',
+    });
+
+    expect(service.activeInvestmentTotalAsOf('2026-02-01')).toBe(0);
+  });
+
+  it('counts a still-active investment for any date on or after it started', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-03-01',
+    });
+
+    expect(service.activeInvestmentTotalAsOf('2026-06-01')).toBe(2000);
+  });
+
+  it('counts a since-completed investment for a date before its completion, unlike activeInvestmentTotal (today-only)', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    service.completeInvestment(inv.id, '2026-06-01', 2500);
+
+    // Today's live total excludes it (it's completed)...
+    expect(service.activeInvestmentTotal()).toBe(0);
+    // ...but as of a date before it completed, it was still active.
+    expect(service.activeInvestmentTotalAsOf('2026-03-01')).toBe(2000);
+  });
+
+  it('excludes a completed investment for a date on or after its completion date', () => {
+    service.addInvestment({
+      name: 'Tech Stock',
+      toAccountId: bankId('Main Bank'),
+      toAccountType: 'bank',
+      amount: 2000,
+      date: '2026-01-01',
+    });
+    const inv = service.state()!.investments[0];
+    service.completeInvestment(inv.id, '2026-06-01', 2500);
+
+    expect(service.activeInvestmentTotalAsOf('2026-06-01')).toBe(0);
   });
 });
 

@@ -126,6 +126,25 @@ function monthLabel(key: string, style: 'long' | 'short' = 'long'): string {
   });
 }
 
+/** A full 'YYYY-MM-DD' date as a short human label (e.g. "Aug 31, 2026") -
+ * used for the Closing Position tag once it's showing a past date rather
+ * than today. */
+function fullDateLabel(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/** Today as a 'YYYY-MM-DD' key, same format as every other date string in
+ * the model - used to clamp Closing Position's as-of date so a period that
+ * hasn't finished yet (e.g. the current month) never claims a future
+ * date. */
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 @Component({
   selector: 'app-reports',
   standalone: true,
@@ -599,11 +618,48 @@ export class ReportsPage {
   });
 
   // ----- Closing Position: Balance Sheet ----------------------------------------
-  // A regrouping of the exact same signed figures `state.netWorth()` sums,
-  // split into Assets and Liabilities for audit-style presentation - the
-  // total below is arithmetically identical to `netWorthLabel()`, never a
-  // second, independently-computed Net Worth.
+  // Unlike Investments/Fixed Deposits/Asset Allocation (moved to the
+  // Dashboard because they never varied with the period filter), Closing
+  // Position stays here precisely because it now *does* vary with it: it
+  // reconstructs balances as of the selected period's end date rather than
+  // always reading today's live figures, so picking last month shows last
+  // month's position, not today's.
 
+  /** The date Closing Position is "as of" - the selected period's end
+   * date, clamped to today so a period that hasn't finished yet (this
+   * month, or a range extending into it) never claims a figure for a date
+   * that hasn't happened. For the common case (viewing the current
+   * month/a range ending now), this is just today, so the balance sheet
+   * reads exactly like it always did. */
+  readonly closingPositionAsOf = computed(() => {
+    const end = this.periodRange().end;
+    const today = todayKey();
+    return end < today ? end : today;
+  });
+
+  /** "As of Today" for the common case above; otherwise the actual past
+   * date, so it's never ambiguous which point in time the numbers below
+   * reflect. */
+  readonly closingPositionLabel = computed(() => {
+    const asOf = this.closingPositionAsOf();
+    return asOf === todayKey() ? 'As of Today' : `As of ${fullDateLabel(asOf)}`;
+  });
+
+  /** Account balances reconstructed as of `closingPositionAsOf()` - shared
+   * by the balance sheet totals below and the per-account cards under it,
+   * so the two never show figures from two different points in time. */
+  readonly closingPositionAccountBalances = computed(() =>
+    this.state.accountBalancesAsOf(this.closingPositionAsOf()),
+  );
+
+  /** A regrouping of the same kind of signed figures `state.netWorth()`
+   * sums for today, but reconstructed as of `closingPositionAsOf()` - see
+   * `accountBalancesAsOf`/`activeFixedDepositTotalAsOf`/
+   * `activeInvestmentTotalAsOf` for how each piece is reconstructed for a
+   * past date. `netWorthLabel()` is arithmetically identical to this
+   * computed's own `netWorth`, never a second, independently-computed
+   * figure - it's only equal to today's live `state.netWorth()` when the
+   * as-of date happens to be today. */
   readonly balanceSheet = computed<{
     assets: { label: string; amount: number }[];
     liabilities: { label: string; amount: number }[];
@@ -611,7 +667,8 @@ export class ReportsPage {
     totalLiabilities: number;
     netWorth: number;
   }>(() => {
-    const balances = this.state.accountBalances();
+    const asOf = this.closingPositionAsOf();
+    const balances = this.closingPositionAccountBalances();
     const liquidPositive = balances
       .filter((a) => a.kind !== 'card' && a.balance > 0)
       .reduce((sum, a) => sum + a.balance, 0);
@@ -620,8 +677,8 @@ export class ReportsPage {
       .reduce((sum, a) => sum + -a.balance, 0);
     const cardCredit = balances.filter((a) => a.kind === 'card' && a.balance > 0).reduce((sum, a) => sum + a.balance, 0);
     const cardDebt = balances.filter((a) => a.kind === 'card' && a.balance < 0).reduce((sum, a) => sum + -a.balance, 0);
-    const fd = this.state.activeFixedDepositTotal();
-    const investments = this.state.activeInvestmentTotal();
+    const fd = this.state.activeFixedDepositTotalAsOf(asOf);
+    const investments = this.state.activeInvestmentTotalAsOf(asOf);
 
     const assets = [
       { label: 'Liquid Cash', amount: liquidPositive + cardCredit },
@@ -638,7 +695,7 @@ export class ReportsPage {
     return { assets, liabilities, totalAssets, totalLiabilities, netWorth: totalAssets - totalLiabilities };
   });
 
-  readonly netWorthLabel = computed(() => this.money(this.state.netWorth()));
+  readonly netWorthLabel = computed(() => this.money(this.balanceSheet().netWorth));
 
   // ----- Formatting helpers ----------------------------------------------------
 

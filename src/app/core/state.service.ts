@@ -48,13 +48,30 @@ export class StateService {
 
   readonly isLoaded = computed(() => this._state() !== null);
 
-  readonly accountBalances = computed<AccountBalance[]>(() => {
+  readonly accountBalances = computed<AccountBalance[]>(() => this.buildAccountBalances(null));
+
+  /** Same shape as `accountBalances()`, but every balance is rebuilt using
+   * only transactions dated on or before `asOfDate` - lets a report
+   * reconstruct what balances looked like at the end of a past period
+   * instead of always reading today's live figures. A bank/wallet's
+   * `initialCapital` has no date of its own (it's the opening balance
+   * before any transaction), so it's always included, same as in
+   * `accountBalances()`. */
+  accountBalancesAsOf(asOfDate: string): AccountBalance[] {
+    return this.buildAccountBalances(asOfDate);
+  }
+
+  /** Shared by `accountBalances` and `accountBalancesAsOf` - `cutoffDate:
+   * null` means "no cutoff" (every transaction counts, i.e. today's live
+   * figures), otherwise only transactions dated on or before it count. */
+  private buildAccountBalances(cutoffDate: string | null): AccountBalance[] {
     const s = this._state();
     if (!s) return [];
     const totals = new Map<string, number>();
     const bump = (key: string, delta: number) => totals.set(key, (totals.get(key) ?? 0) + delta);
 
     for (const t of s.transactions) {
+      if (cutoffDate !== null && t.date > cutoffDate) continue;
       const signedAmount = t.type === 'income' || t.type === 'others-in' ? t.amount : -t.amount;
       if (t.accountType === 'cash') {
         bump('bucket:cash', signedAmount);
@@ -112,7 +129,7 @@ export class StateService {
       });
     }
     return balances;
-  });
+  }
 
   /** Principal locked away in still-`active` fixed deposits (no projected
    * interest included - only the money actually committed). Counted
@@ -133,6 +150,24 @@ export class StateService {
       .reduce((sum, fd) => sum + fd.amount, 0),
   );
 
+  /** Same idea as `activeFixedDepositTotal`, reconstructed for a past
+   * `asOfDate` instead of today's live `status` - an FD is counted as
+   * still locked as of that date when it had already started
+   * (`fd.startDate <= asOfDate`) and hadn't yet naturally matured by then
+   * (`fdMaturityDate(fd) > asOfDate`), regardless of what's happened to it
+   * since. This can't account for an *early* withdrawal, though: unlike a
+   * natural maturity, an early withdrawal has no date field of its own, so
+   * there's no way to tell whether it was still locked as of a past date -
+   * a `withdrawn` FD is excluded here entirely rather than guessed at,
+   * which can slightly understate a historical total when the withdrawal
+   * actually happened after `asOfDate`. */
+  activeFixedDepositTotalAsOf(asOfDate: string): number {
+    return (this._state()?.fixedDeposits ?? [])
+      .filter((fd) => fd.status !== 'withdrawn')
+      .filter((fd) => fd.startDate <= asOfDate && fdMaturityDate(fd) > asOfDate)
+      .reduce((sum, fd) => sum + fd.amount, 0);
+  }
+
   /** Same idea as `activeFixedDepositTotal`, for Investments - the invested
    * amount of every still-`active` investment, with or without a "from
    * fund" (no projected gain/loss included, since that isn't known until
@@ -146,6 +181,19 @@ export class StateService {
       .filter((inv) => inv.status === 'active')
       .reduce((sum, inv) => sum + inv.amount, 0),
   );
+
+  /** Same idea as `activeInvestmentTotal`, reconstructed for a past
+   * `asOfDate` using each investment's `date`/`completionDate` instead of
+   * today's live `status` - fully reconstructable, unlike Fixed Deposits,
+   * since a completed investment's payout date is always recorded: an
+   * investment counts as still active as of that date when it had already
+   * started and either hasn't completed yet at all, or completed only
+   * after `asOfDate`. */
+  activeInvestmentTotalAsOf(asOfDate: string): number {
+    return (this._state()?.investments ?? [])
+      .filter((inv) => inv.date <= asOfDate && (!inv.completionDate || inv.completionDate > asOfDate))
+      .reduce((sum, inv) => sum + inv.amount, 0);
+  }
 
   /** Total account balances plus money currently locked away in active
    * fixed deposits and active investments - without this, placing an FD or

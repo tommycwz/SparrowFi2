@@ -548,9 +548,9 @@
         <h2
           >Closing Position<sf-info-tip
             label="Closing Position"
-            text="Assets and Liabilities as of today, laid out as a balance sheet. The Net Worth total here is arithmetically identical to the Net Worth shown on the Dashboard - never a second, independently-computed figure."
+            text="Assets and Liabilities as of the end of the selected period, laid out as a balance sheet - pick last month and this reconstructs last month's position, not today's. One caveat: an early-withdrawn Fixed Deposit has no recorded withdrawal date, so it can't be perfectly reconstructed for a past date and is left out of that date's total."
         /></h2>
-        <span class="muted period-tag">As of Today</span>
+        <span class="muted period-tag">{{ closingPositionLabel() }}</span>
       </div>
 
       @if (balanceSheet().totalAssets === 0 && balanceSheet().totalLiabilities === 0) {
@@ -600,9 +600,9 @@
         </div>
       }
 
-      @if (state.accountBalances().length > 0) {
+      @if (closingPositionAccountBalances().length > 0) {
         <div class="account-grid">
-          @for (a of state.accountBalances(); track a.kind + a.id) {
+          @for (a of closingPositionAccountBalances(); track a.kind + a.id) {
             <div class="account-card card">
               <div class="acc-header">
                 <span class="acc-dot" [style.background]="a.color"></span>

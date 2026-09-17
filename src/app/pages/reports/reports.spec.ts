@@ -10,6 +10,16 @@ import { monthKeyOf } from '../../core/format.util';
 const TODAY = new Date().toISOString().slice(0, 10);
 const THIS_MONTH = monthKeyOf();
 
+/** The 'YYYY-MM' key `monthsAgo` calendar months back from today - for
+ * selecting a definitely-past report period regardless of when the suite
+ * runs (mirrors the equivalent helper in dashboard.spec.ts). */
+function monthKeyMonthsAgo(monthsAgo: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - monthsAgo);
+  return monthKeyOf(d);
+}
+
 describe('ReportsPage', () => {
   let state: StateService;
   let page: ReportsPage;
@@ -480,6 +490,51 @@ describe('ReportsPage', () => {
     it('netWorthLabel is arithmetically identical to state.netWorth(), never a second computed figure', () => {
       state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 500 });
       expect(page.netWorthLabel()).toBe(page.money(state.netWorth()));
+    });
+
+    it('closingPositionAsOf defaults to today (and the label reads "As of Today") when viewing the current month', () => {
+      expect(page.closingPositionAsOf()).toBe(TODAY);
+      expect(page.closingPositionLabel()).toBe('As of Today');
+    });
+
+    it('reconstructs last month\'s position when a past month is selected, ignoring transactions after it', () => {
+      const pastMonth = monthKeyMonthsAgo(2);
+      const dayInPastMonth = `${pastMonth}-01`; // any date inside the past month works for the assertions below
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 1000 });
+      const [bank] = state.state()!.banks;
+      // Booked inside the selected past month...
+      state.addTransaction({ date: dayInPastMonth, amount: 200, type: 'income', accountType: 'bank', accountId: bank.id });
+      // ...and booked since then, which should NOT show up in that past
+      // month's Closing Position.
+      state.addTransaction({ date: TODAY, amount: 5000, type: 'income', accountType: 'bank', accountId: bank.id });
+
+      page.month.set(pastMonth);
+
+      expect(page.closingPositionAsOf()).toBe(page.periodRange().end);
+      expect(page.closingPositionAsOf()).not.toBe(TODAY);
+      expect(page.closingPositionLabel()).not.toBe('As of Today');
+      expect(page.balanceSheet().assets.find((a) => a.label === 'Liquid Cash')?.amount).toBe(1000 + 200);
+    });
+
+    it("excludes an active Investment from a past period's total once it's since completed, using the investment's own dates rather than today's status", () => {
+      const pastMonth = monthKeyMonthsAgo(3);
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: `${pastMonth}-01`,
+      });
+      const [inv] = state.state()!.investments;
+      // Completes well after the selected past month.
+      state.completeInvestment(inv.id, TODAY, 1300);
+
+      page.month.set(pastMonth);
+
+      // As of that past month's end, the investment was still active.
+      expect(page.balanceSheet().assets.find((a) => a.label === 'Investments')?.amount).toBe(1000);
     });
   });
 
