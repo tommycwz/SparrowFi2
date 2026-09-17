@@ -115,31 +115,29 @@
           }
         </select>
       </label>
-      @if (form().fromFund) {
-        <label>
-          To fund (optional)
-          <select
-            [ngModel]="form().toFund"
-            (ngModelChange)="form.update((f) => ({ ...f, toFund: $event }))"
-          >
-            <option value="">None (outside SparrowFi)</option>
-            @if (banks().length > 0) {
-              <optgroup label="Banks">
-                @for (b of banks(); track b.id) {
-                  <option [value]="'bank:' + b.id">{{ b.name }}</option>
-                }
-              </optgroup>
-            }
-            @if (wallets().length > 0) {
-              <optgroup label="Wallets">
-                @for (w of wallets(); track w.id) {
-                  <option [value]="'wallet:' + w.id">{{ w.name }}</option>
-                }
-              </optgroup>
-            }
-          </select>
-        </label>
-      }
+      <label>
+        To fund (optional)
+        <select
+          [ngModel]="form().toFund"
+          (ngModelChange)="form.update((f) => ({ ...f, toFund: $event }))"
+        >
+          <option value="">None (outside SparrowFi)</option>
+          @if (banks().length > 0) {
+            <optgroup label="Banks">
+              @for (b of banks(); track b.id) {
+                <option [value]="'bank:' + b.id">{{ b.name }}</option>
+              }
+            </optgroup>
+          }
+          @if (wallets().length > 0) {
+            <optgroup label="Wallets">
+              @for (w of wallets(); track w.id) {
+                <option [value]="'wallet:' + w.id">{{ w.name }}</option>
+              }
+            </optgroup>
+          }
+        </select>
+      </label>
       <label>
         Amount
         <input
@@ -192,6 +190,29 @@
           [ngModel]="completeForm().finalAmount"
           (ngModelChange)="completeForm.update((f) => ({ ...f, finalAmount: $event }))"
         />
+      </label>
+      <label>
+        To fund (optional)
+        <select
+          [ngModel]="completeForm().toFund"
+          (ngModelChange)="completeForm.update((f) => ({ ...f, toFund: $event }))"
+        >
+          <option value="">None (outside SparrowFi)</option>
+          @if (banks().length > 0) {
+            <optgroup label="Banks">
+              @for (b of banks(); track b.id) {
+                <option [value]="'bank:' + b.id">{{ b.name }}</option>
+              }
+            </optgroup>
+          }
+          @if (wallets().length > 0) {
+            <optgroup label="Wallets">
+              @for (w of wallets(); track w.id) {
+                <option [value]="'wallet:' + w.id">{{ w.name }}</option>
+              }
+            </optgroup>
+          }
+        </select>
       </label>
     </div>
     <button type="button" class="btn btn-primary btn-block" (click)="saveComplete()">Complete</button>

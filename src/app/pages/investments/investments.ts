@@ -33,6 +33,7 @@ interface InvestmentForm {
 interface CompleteForm {
   completionDate: string;
   finalAmount: string;
+  toFund: string;
 }
 
 function blankForm(): InvestmentForm {
@@ -66,6 +67,7 @@ export class InvestmentsPage {
   readonly completeForm = signal<CompleteForm>({
     completionDate: new Date().toISOString().slice(0, 10),
     finalAmount: '',
+    toFund: '',
   });
 
   constructor(readonly state: StateService) {}
@@ -102,12 +104,16 @@ export class InvestmentsPage {
     return investmentDelta(inv);
   }
 
-  /** Handles the "From fund" select changing - also clears any
-   * previously-chosen "To fund" when the source is set back to "None
-   * (outside SparrowFi)", since with no source account there's nothing this
-   * app is tracking money coming out of. */
+  /** Handles the "From fund" select changing. "From fund" and "To fund"
+   * are independent - money can come from outside SparrowFi (no From fund)
+   * and still pay back into a tracked account on completion, or vice
+   * versa - so this no longer clears "To fund" the way it used to. That
+   * old coupling was the bug behind investments completing with no
+   * "Investment (In)"/"Investment Profit" transactions: any investment
+   * added with "From fund" left as "None" could never have a "To fund"
+   * selected either, since the field was hidden until "From fund" was set. */
   onFromFundChange(fromFund: string): void {
-    this.form.update((f) => ({ ...f, fromFund, toFund: fromFund ? f.toFund : '' }));
+    this.form.update((f) => ({ ...f, fromFund }));
   }
 
   openAdd(): void {
@@ -118,11 +124,10 @@ export class InvestmentsPage {
 
   openEdit(inv: Investment): void {
     this.editingId.set(inv.id);
-    const fromFund = encodeFund(inv.fromAccountType, inv.fromAccountId);
     this.form.set({
       name: inv.name,
-      fromFund,
-      toFund: fromFund ? encodeFund(inv.toAccountType, inv.toAccountId) : '',
+      fromFund: encodeFund(inv.fromAccountType, inv.fromAccountId),
+      toFund: encodeFund(inv.toAccountType, inv.toAccountId),
       amount: String(inv.amount),
       date: inv.date,
       remarks: inv.remarks ?? '',
@@ -160,15 +165,24 @@ export class InvestmentsPage {
     this.completeForm.set({
       completionDate: new Date().toISOString().slice(0, 10),
       finalAmount: String(inv.amount),
+      toFund: encodeFund(inv.toAccountType, inv.toAccountId),
     });
   }
 
+  /** Patches the investment's "To fund" (if it was changed here, in the
+   * Complete modal, rather than back on the Edit form) and then books the
+   * completion. The two are separate calls because `completeInvestment`
+   * only ever reads the investment's *already-saved* toAccountId/Type -
+   * see its doc comment - so a fund picked in this same dialog has to land
+   * on the investment record first. */
   saveComplete(): void {
     const id = this.completingId();
     if (!id) return;
     const f = this.completeForm();
     const finalAmount = parseFloat(f.finalAmount);
     if (!f.completionDate || isNaN(finalAmount) || finalAmount < 0) return;
+    const to = decodeFund(f.toFund);
+    this.state.updateInvestment(id, { toAccountId: to?.id, toAccountType: to?.type });
     this.state.completeInvestment(id, f.completionDate, finalAmount);
     this.completingId.set(null);
   }
