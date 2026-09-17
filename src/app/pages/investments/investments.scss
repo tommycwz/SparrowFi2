@@ -66,6 +66,44 @@
   color: var(--accent-contrast);
 }
 
+/* ----- Sort direction toggle (per-tab, user-overridable) --------------------- */
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0.6rem 0;
+}
+
+.btn-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn-sort:hover {
+  color: var(--accent);
+}
+
+/* Chevron-down doubles as the sort arrow - flipped for ascending ("Oldest
+   first") so it always points the way the list actually reads. `sf-icon`
+   is a plain inline custom element by default, which CSS transform doesn't
+   reliably apply to, so it's switched to inline-flex here first. */
+.btn-sort sf-icon {
+  display: inline-flex;
+}
+
+.btn-sort sf-icon.flipped {
+  transform: rotate(180deg);
+}
+
 /* Lighter-weight than the icon-led `.empty-state` card above - just a
    one-line note for a tab that has no rows, not a full empty page. */
 .section-empty {

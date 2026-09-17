@@ -28,6 +28,16 @@
       </button>
     </div>
 
+    <div class="sort-row">
+      <span class="muted small"
+        >Sorted by {{ tab() === 'active' ? 'Investment Date' : 'Completion Date' }}</span
+      >
+      <button type="button" class="btn-sort" (click)="toggleSort()">
+        <sf-icon name="chevron-down" [size]="14" [class.flipped]="!sortDesc()" />
+        {{ sortDesc() ? 'Newest first' : 'Oldest first' }}
+      </button>
+    </div>
+
     @if (visibleInvestments().length === 0) {
       <div class="card section-empty muted">
         {{ tab() === 'active' ? 'No active investments.' : 'No completed investments yet.' }}
@@ -74,6 +84,8 @@
             <div class="inv-actions">
               @if (inv.status === 'active') {
                 <button type="button" class="btn btn-secondary" (click)="openComplete(inv)">Complete Investment</button>
+              } @else {
+                <button type="button" class="btn btn-secondary" (click)="openComplete(inv)">Edit Completion</button>
               }
               <button type="button" class="btn btn-danger" (click)="remove(inv.id)">Delete</button>
             </div>
@@ -171,7 +183,10 @@
 }
 
 @if (completingId()) {
-  <sf-modal title="Complete Investment" (close)="cancelComplete()">
+  <sf-modal
+    [title]="completingInvestment()?.status === 'completed' ? 'Edit Completion' : 'Complete Investment'"
+    (close)="cancelComplete()"
+  >
     <div class="field-row">
       <label>
         Completion date
@@ -215,6 +230,8 @@
         </select>
       </label>
     </div>
-    <button type="button" class="btn btn-primary btn-block" (click)="saveComplete()">Complete</button>
+    <button type="button" class="btn btn-primary btn-block" (click)="saveComplete()">
+      {{ completingInvestment()?.status === 'completed' ? 'Save' : 'Complete' }}
+    </button>
   </sf-modal>
 }
