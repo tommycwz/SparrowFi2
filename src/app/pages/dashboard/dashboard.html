@@ -23,13 +23,40 @@
         <strong>{{ netWorthLabel() }}</strong>
       </div>
     </div>
-    <svg class="sparkline" viewBox="0 0 300 60" preserveAspectRatio="none" role="img" aria-label="Available cash, last 30 days">
-      <path class="spark-area" [attr.d]="cashSparkline().areaPath"></path>
-      <path class="spark-line" [attr.d]="cashSparkline().linePath"></path>
-      @if (cashSparkline().endPoint; as p) {
-        <circle class="spark-dot" [attr.cx]="p.x" [attr.cy]="p.y" r="3.2"></circle>
+    <div class="sparkline-wrap">
+      <svg
+        #sparkSvg
+        class="sparkline"
+        viewBox="0 0 300 60"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Available cash, last 30 days"
+        (mousemove)="onSparklineHover($event, sparkSvg)"
+        (mouseleave)="onSparklineLeave()"
+        (touchstart)="onSparklineTouch($event, sparkSvg)"
+        (touchend)="onSparklineLeave()"
+      >
+        <path class="spark-area" [attr.d]="cashSparkline().areaPath"></path>
+        <path class="spark-line" [attr.d]="cashSparkline().linePath"></path>
+        @if (sparklineHoverPoint(); as hp) {
+          <line class="spark-guide" [attr.x1]="hp.x" [attr.x2]="hp.x" y1="0" y2="54"></line>
+          <circle class="spark-hover-dot" [attr.cx]="hp.x" [attr.cy]="hp.y" r="4"></circle>
+        } @else if (cashSparkline().endPoint; as p) {
+          <circle class="spark-dot" [attr.cx]="p.x" [attr.cy]="p.y" r="3.2"></circle>
+        }
+      </svg>
+      @if (sparklineHoverPoint(); as hp) {
+        <div
+          class="spark-tooltip"
+          [style.left.%]="(hp.x / 300) * 100"
+          [class.align-start]="hp.x / 300 < 0.15"
+          [class.align-end]="hp.x / 300 > 0.85"
+        >
+          <div class="spark-tooltip-date">{{ hp.dateLabel }}</div>
+          <div class="spark-tooltip-value">{{ hp.valueLabel }}</div>
+        </div>
       }
-    </svg>
+    </div>
   </section>
 
   <div class="card stats-bar">
@@ -150,7 +177,7 @@
       <h2>Spending Pulse</h2>
     </div>
     <div class="pulse-grid">
-      <div class="card pulse-card">
+      <div class="card pulse-card savings-rate-card">
         <h3 class="widget-title"
           >Savings Rate<sf-info-tip
             label="Savings Rate"
@@ -202,55 +229,188 @@
         }
       </div>
 
-      <div class="card pulse-card">
+      <div class="card pulse-card category-spend-card">
         <h3 class="widget-title"
-          >Category Pace<sf-info-tip
-            label="Category Pace"
-            text="Your top spending categories this month, compared to each one's own average over the last 3 months — not a fixed budget, just your own recent normal."
+          >Where It Went<sf-info-tip
+            label="Where It Went"
+            text="This month's Expense transactions, split by category. Commitments, income, transfers and Fixed Deposit/Investment principal movement aren't included — this is just discretionary spend."
             align="end"
-          /> <span class="widget-sub muted">this month vs {{ trailingMonthsCounted() }}-mo avg</span></h3>
-        @if (categoryPace().length === 0) {
+        /></h3>
+        @if (!categorySpend().hasExpense) {
           <div class="empty-state">
             <sf-icon name="tag" [size]="28" />
             <p>No expenses recorded this month yet.</p>
           </div>
         } @else {
-          <div class="pace-list">
-            @for (row of categoryPace(); track row.id) {
-              <div class="pace-row">
-                <span class="pace-name" [title]="row.name">{{ row.name }}</span>
-                <div class="pace-track" [class.dashed]="row.band === 'new'">
-                  @if (row.band !== 'new') {
-                    <div
-                      class="pace-fill"
-                      [style.width.%]="paceFillPercent(row)"
-                      [class.band-under]="row.band === 'under'"
-                      [class.band-on]="row.band === 'on'"
-                      [class.band-over]="row.band === 'over'"
-                    ></div>
-                    <div class="pace-mark"></div>
-                  }
-                </div>
-                @if (row.band === 'new') {
-                  <span class="chip chip-info">New</span>
-                } @else {
-                  <span
-                    class="pace-pct"
-                    [class.band-under]="row.band === 'under'"
-                    [class.band-on]="row.band === 'on'"
-                    [class.band-over]="row.band === 'over'"
-                    >{{ pct0(row.pct) }}%</span
-                  >
+          <div class="ring-row">
+            <div class="donut-wrap">
+              <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="This month's expenses by category">
+                <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+                @for (seg of categorySpend().segments; track seg.id) {
+                  <circle
+                    cx="21"
+                    cy="21"
+                    r="15.91549430919"
+                    fill="transparent"
+                    [attr.stroke]="seg.color"
+                    [attr.stroke-dasharray]="seg.dashArray"
+                    [attr.stroke-dashoffset]="seg.offset"
+                    class="donut-segment"
+                  />
                 }
+              </svg>
+              <div class="donut-center">
+                <span class="donut-center-value money">{{ money(categorySpend().total) }}</span>
+                <span class="donut-center-label muted">this month</span>
               </div>
-            }
+            </div>
+            <div class="ring-legend">
+              @for (seg of categorySpend().segments; track seg.id) {
+                <div class="legend-row">
+                  <span class="dot" [style.background]="seg.color"></span>{{ seg.name }}<span class="amt">{{ seg.pctLabel }}%</span>
+                </div>
+              }
+            </div>
           </div>
         }
       </div>
     </div>
   </section>
 
-  <!-- ================= Zone 4: Accounts ================= -->
+  <!-- ================= Zone 4: Portfolio ================= -->
+  <section>
+    <div class="section-head">
+      <h2
+        >Asset Allocation<sf-info-tip
+          label="Asset Allocation"
+          text="How your total assets are currently split between Liquid Cash, Fixed Deposits and Investments principal — today's live figures."
+      /></h2>
+    </div>
+    @if (assetAllocation().items.length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="layers" [size]="28" />
+        <p>No assets recorded yet.</p>
+      </div>
+    } @else {
+      <div class="card pulse-card asset-allocation-card">
+        <div class="ring-row">
+          <div class="donut-wrap">
+            <svg viewBox="0 0 42 42" class="donut-svg" role="img" aria-label="Asset allocation">
+              <circle class="donut-track" cx="21" cy="21" r="15.91549430919" fill="transparent" />
+              @for (seg of assetAllocation().items; track seg.id) {
+                <circle
+                  cx="21"
+                  cy="21"
+                  r="15.91549430919"
+                  fill="transparent"
+                  [attr.stroke]="seg.color"
+                  [attr.stroke-dasharray]="seg.dashArray"
+                  [attr.stroke-dashoffset]="seg.offset"
+                  class="donut-segment"
+                />
+              }
+            </svg>
+            <div class="donut-center">
+              <span class="donut-center-value money">{{ money(assetAllocation().total) }}</span>
+              <span class="donut-center-label muted">total assets</span>
+            </div>
+          </div>
+          <div class="ring-legend">
+            @for (c of assetAllocation().items; track c.id) {
+              <div class="legend-row">
+                <span class="dot" [style.background]="c.color"></span>{{ c.name }}<span class="amt">{{ money(c.amount) }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <div class="section-head">
+      <h2
+        >Fixed Deposits<sf-info-tip
+          label="Fixed Deposits"
+          text="Every Fixed Deposit on record, soonest maturity first — active, matured and withdrawn deposits all stay visible as a record of what happened."
+      /></h2>
+    </div>
+    @if (fixedDepositLedger().length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="lock" [size]="28" />
+        <p>No fixed deposits recorded yet.</p>
+      </div>
+    } @else {
+      <div class="card fd-ledger">
+        @for (fd of fixedDepositLedger(); track fd.id) {
+          <div class="fd-row">
+            <div class="fd-row-main">
+              <span class="fd-bank">{{ fd.bankName }}</span>
+              <span [class]="'fd-status fd-status-' + fd.status">{{ fd.status }}</span>
+            </div>
+            <div class="fd-row-detail muted">
+              {{ fd.percentage }}% p.a. · {{ fd.months }} mo · matures {{ fd.maturityDate }}
+            </div>
+            <div class="fd-row-amounts">
+              <span class="fd-principal">{{ money(fd.principal) }}</span>
+              <sf-icon name="chevron-right" [size]="14" />
+              <span class="fd-maturity">{{ money(fd.maturityValue) }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="section-head">
+      <h2
+        >Investments<sf-info-tip
+          label="Investments"
+          text="Every investment, principal as the neutral base segment plus whatever it gained (green, stacked on top) or lost (red) once completed."
+          align="end"
+      /></h2>
+      <div class="cash-flow-legend">
+        <span class="legend-item"><span class="legend-dot invested"></span>Invested</span>
+        <span class="legend-item"><span class="legend-dot gain"></span>Gain</span>
+        <span class="legend-item"><span class="legend-dot loss"></span>Loss</span>
+      </div>
+    </div>
+
+    @if (investmentBreakdown().bars.length === 0) {
+      <div class="empty-state card">
+        <sf-icon name="trending-up" [size]="28" />
+        <p>No investments recorded yet.</p>
+      </div>
+    } @else {
+      <div class="card investment-chart-card">
+        <div class="investment-chart">
+          @for (b of investmentBreakdown().bars; track b.id) {
+            <div class="investment-col">
+              <div class="investment-bars">
+                <div class="investment-bar-track" [style.height.%]="barHeightPercent(b.total, investmentBreakdown().max)">
+                  @if (b.gain > 0) {
+                    <div class="investment-bar-segment gain" [style.height.%]="(b.gain / b.total) * 100"></div>
+                  }
+                  @if (b.loss > 0) {
+                    <div class="investment-bar-segment loss" [style.height.%]="(b.loss / b.total) * 100"></div>
+                  }
+                  <div class="investment-bar-segment base" [style.height.%]="(b.baseAmount / b.total) * 100"></div>
+                </div>
+              </div>
+              <span class="investment-label muted" [title]="b.name">{{ b.name }}</span>
+              <span class="investment-amount muted small" [title]="'Invested ' + money(b.amount)">
+                {{ money(b.amount) }}
+              </span>
+              @if (b.gain > 0 || b.loss > 0) {
+                <span class="investment-sub small" [class.positive]="b.gain > 0" [class.negative]="b.loss > 0">
+                  {{ b.gain > 0 ? '+' : '-' }}{{ money(b.gain > 0 ? b.gain : b.loss) }}
+                </span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- ================= Zone 5: Accounts ================= -->
   <section>
     <div class="section-head">
       <h2>Accounts</h2>
@@ -295,7 +455,7 @@
     }
   </section>
 
-  <!-- ================= Zone 5: Recent Activity ================= -->
+  <!-- ================= Zone 6: Recent Activity ================= -->
   <section>
     <div class="section-head">
       <h2>Recent Activity</h2>

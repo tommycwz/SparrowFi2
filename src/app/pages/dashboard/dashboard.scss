@@ -52,10 +52,19 @@
   font-weight: 800;
 }
 
+.sparkline-wrap {
+  position: relative;
+}
+
 .sparkline {
   width: 100%;
   height: 56px;
   display: block;
+  /* The hover/tap target needs to feel intentional rather than accidental,
+     but this is still a decorative chart, not a control - no focus ring,
+     no cursor:pointer. touch-action keeps a finger drag on the chart from
+     also panning/zooming the page while a tap is being read as a hover. */
+  touch-action: manipulation;
 }
 
 .spark-area {
@@ -73,6 +82,60 @@
 
 .spark-dot {
   fill: var(--accent);
+}
+
+.spark-guide {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark-hover-dot {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Sits above the chart, tracking the hovered/tapped point's x position
+   (set inline as a `left` percentage - the viewBox is stretched to fill
+   this wrapper with `preserveAspectRatio="none"`, so a percentage of the
+   0-300 viewBox width lines up exactly with the same percentage of the
+   wrapper's rendered width). Centered on the point by default; the
+   align-start/align-end variants keep it from running off either edge of
+   the card for points near the ends of the 30-day window. */
+.spark-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  transform: translateX(-50%);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.3rem 0.55rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.spark-tooltip.align-start {
+  transform: translateX(0);
+}
+
+.spark-tooltip.align-end {
+  transform: translateX(-100%);
+}
+
+.spark-tooltip-date {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.spark-tooltip-value {
+  font-size: 0.85rem;
+  font-weight: 800;
 }
 
 /* ----- Shared bits: section headers, empty states, chips ------------------ */
@@ -138,16 +201,43 @@
 }
 
 @media (max-width: 480px) {
+  /* Four stats crammed into one row ran out of width for real currency
+     values on narrow phones - a figure like "-RM2,50X.XX" got ellipsis-
+     clipped mid-number even after shrinking the font, which is the one
+     thing a money figure must never do. Wrapping to a 2x2 grid instead
+     roughly doubles the width each value gets, which is what actually
+     fixes it rather than just delaying it at a smaller font size. */
+  .stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 0.7rem;
+  }
+
   .stats-bar .stat-value {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
   .stats-bar .stat-label {
-    font-size: 0.62rem;
+    font-size: 0.65rem;
   }
 
   .stats-bar .stat {
     padding: 0.3rem 0.35rem;
+  }
+
+  /* The base rule (below) draws a divider after every stat but the last -
+     right at home in a single row of four, but in a 2x2 grid that also
+     puts one after the top-right stat (nothing to its right) and after
+     the bottom-left one (nothing coherent to divide there once wrapped).
+     Restrict it to the left stat of each row instead. The extra
+     `.stats-bar` ancestor here makes this more specific than the base
+     `.stat:not(:last-child)::after` rule, so it wins regardless of which
+     one is declared first in the file. */
+  .stats-bar .stat:not(:last-child)::after {
+    display: none;
+  }
+
+  .stats-bar .stat:nth-child(odd):not(:last-child)::after {
+    display: block;
   }
 }
 
@@ -406,6 +496,13 @@
   font-weight: 800;
 }
 
+/* "Where It Went" shows a currency total in the same spot the Savings
+   Rate ring shows a short "41%" - a full formatted amount (e.g.
+   "RM1,760.40") needs a smaller size to keep clear of the ring itself. */
+.donut-center-value.money {
+  font-size: 0.82rem;
+}
+
 .donut-center-label {
   font-size: 0.62rem;
   font-weight: 700;
@@ -439,90 +536,6 @@
 .legend-row .amt {
   margin-left: auto;
   font-weight: 700;
-}
-
-.pace-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-.pace-row {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-}
-
-.pace-name {
-  width: 34%;
-  flex-shrink: 0;
-  font-size: 0.82rem;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pace-track {
-  position: relative;
-  flex: 1;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  min-width: 0;
-}
-
-.pace-track.dashed {
-  background: transparent;
-  border: 1.5px dashed var(--border);
-}
-
-.pace-fill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-.pace-fill.band-under {
-  background: var(--success);
-}
-
-.pace-fill.band-on {
-  background: var(--warning);
-}
-
-.pace-fill.band-over {
-  background: var(--danger);
-}
-
-/* The "100% of baseline" tick - fixed at the same spot on every row's bar
-   (see `PACE_AXIS_MAX` in dashboard.ts), since only the fill varies. */
-.pace-mark {
-  position: absolute;
-  top: -3px;
-  left: 62.5%;
-  width: 1.5px;
-  height: 13px;
-  background: var(--text-muted);
-}
-
-.pace-pct {
-  width: 40px;
-  flex-shrink: 0;
-  text-align: right;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.pace-pct.band-under {
-  color: var(--success);
-}
-
-.pace-pct.band-on {
-  color: var(--warning);
-}
-
-.pace-pct.band-over {
-  color: var(--danger);
 }
 
 /* ----- Zone 4: Accounts, split into Assets / Liabilities -------------------- */
@@ -728,5 +741,201 @@
 }
 
 .tx-amount.negative {
+  color: var(--danger);
+}
+
+/* ----- Zone 4: Portfolio ---------------------------------------------------- */
+
+.asset-allocation-card {
+  margin-bottom: 1.25rem;
+}
+
+.cash-flow-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.78rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.legend-dot.invested {
+  background: var(--investment);
+}
+
+.legend-dot.gain {
+  background: var(--success);
+}
+
+.legend-dot.loss {
+  background: var(--danger);
+}
+
+/* ----- Fixed Deposits ledger ------------------------------------------------ */
+
+.fd-ledger {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1.25rem;
+}
+
+.fd-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.75rem 0;
+}
+
+.fd-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.fd-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.fd-bank {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.fd-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.fd-status-active {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+
+.fd-status-matured {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.fd-status-withdrawn {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.fd-row-detail {
+  font-size: 0.75rem;
+}
+
+.fd-row-amounts {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.fd-principal {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.fd-maturity {
+  font-weight: 800;
+}
+
+/* ----- Investments (per-investment principal vs. gain/loss) ----------------- */
+
+.investment-chart {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.75rem;
+  height: 180px;
+  padding-bottom: 0.25rem;
+}
+
+.investment-col {
+  flex: 0 0 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.investment-bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+}
+
+.investment-bar-track {
+  width: 60%;
+  max-width: 28px;
+  min-height: 2px;
+  display: flex;
+  /* Document order is [gain-or-loss?, base] - plain (non-reversed) column
+     stacking puts the first child at the top and the last at the bottom,
+     so "base" (the principal, always last) anchors the bottom of the bar
+     and any gain/loss segment stacks visually on top of it. */
+  flex-direction: column;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+
+.investment-bar-segment.base {
+  background: var(--investment);
+}
+
+.investment-bar-segment.gain {
+  background: var(--success);
+}
+
+.investment-bar-segment.loss {
+  background: var(--danger);
+}
+
+.investment-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-amount,
+.investment-sub {
+  font-size: 0.68rem;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-sub.positive {
+  color: var(--success);
+}
+
+.investment-sub.negative {
   color: var(--danger);
 }

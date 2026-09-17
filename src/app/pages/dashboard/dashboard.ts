@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
-import { CURRENCIES, Transaction } from '../../core/models';
+import { CURRENCIES, FixedDepositStatus, InvestmentStatus, Transaction } from '../../core/models';
 import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
+import { investmentGainValue, investmentLossValue } from '../../core/investment.util';
 import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { InfoTipComponent } from '../../shared/info-tip';
@@ -17,26 +18,19 @@ const RECENT_COUNT = 5;
 /** How many days of daily liquid-cash history the hero sparkline plots. */
 const SPARKLINE_DAYS = 30;
 /** How many trailing *completed* calendar months (this month excluded)
- * Average Monthly Burn and each category's pace baseline are computed
- * over - capped by however much history the account actually has, via
- * `earliestMonthOf`, so a 2-week-old file doesn't get dragged toward zero
- * by months before any data existed. */
+ * Average Monthly Burn is computed over - capped by however much history
+ * the account actually has, via `earliestMonthOf`, so a 2-week-old file
+ * doesn't get dragged toward zero by months before any data existed. */
 const TRAILING_MONTHS = 3;
-/** How many categories Category Pace surfaces - deliberately smaller than
- * the old Spending by Category donut's top-5-then-Other, since this widget
- * is meant to be skimmed as a glance, not read as a breakdown. */
-const PACE_TOP_COUNT = 4;
-/** Fixed axis a Category Pace bar is drawn against: 0-160% of baseline,
- * with the "100% of baseline" tick always at the same spot (100/160 =
- * 62.5%, set once in `dashboard.scss` on `.pace-mark`) - a bar's *fill*
- * width still varies per row, but the tick never has to move, since it's
- * marking the same 100% point on the same scale every time. A pace over
- * the axis max still fills the full bar rather than overflowing it. */
-const PACE_AXIS_MAX = 160;
+/** How many individual categories "Where It Went" breaks out before
+ * rolling everything past that into a single "Other" slice - keeps the
+ * donut legend to a glance-able length regardless of how many categories
+ * an account has. */
+const CATEGORY_DONUT_TOP_COUNT = 5;
 /** Circumference of the donut's SVG circle when its radius is 15.9155 -
  * the standard "no-library donut chart" trick, so a percentage (0-100) can
  * be used directly as a stroke-dasharray/dashoffset value. Shared by the
- * Savings Rate ring below. */
+ * Savings Rate ring and the "Where It Went" donut below. */
 const DONUT_CIRCUMFERENCE = 100;
 
 interface MonthlyStats {
@@ -51,9 +45,18 @@ interface SparklinePoint {
   y: number;
 }
 
+/** One plottable day on the hero sparkline, carrying its own pre-formatted
+ * date/value labels so the hover tooltip never has to re-derive "which
+ * calendar day is this point" from a bare x-coordinate. */
+interface CashSparklinePoint extends SparklinePoint {
+  dateLabel: string;
+  valueLabel: string;
+}
+
 interface CashSparkline {
   linePath: string;
   areaPath: string;
+  points: CashSparklinePoint[];
   endPoint: SparklinePoint | null;
   deltaLabel: string;
   deltaPositive: boolean;
@@ -97,16 +100,75 @@ interface SavingsRate {
   segments: RingSegment[];
 }
 
-type PaceBand = 'under' | 'on' | 'over' | 'new';
-
-interface CategoryPaceRow {
+interface CategorySpendSegment {
   id: string;
   name: string;
   color: string;
-  current: number;
-  baseline: number | null;
-  pct: number | null;
-  band: PaceBand;
+  amount: number;
+  /** Whole-number share of this month's total, e.g. "41" for 41% - kept
+   * as a string since the legend only ever displays it, never does math
+   * with it. */
+  pctLabel: string;
+  dashArray: string;
+  offset: number;
+}
+
+interface CategorySpend {
+  hasExpense: boolean;
+  total: number;
+  segments: CategorySpendSegment[];
+}
+
+interface AssetAllocationSlice {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+  dashArray: string;
+  offset: number;
+}
+
+interface AssetAllocation {
+  total: number;
+  items: AssetAllocationSlice[];
+}
+
+/** One stacked bar's worth of drawing data for the Investments chart - see
+ * `investmentBreakdown` for how the three segments are derived. Moved here
+ * from Reports: an investment's principal/gain/loss is today's live state,
+ * not scoped to any reporting period, so it never changed when Reports'
+ * period filter did - it belongs on the Dashboard instead. */
+interface InvestmentBar {
+  id: string;
+  name: string;
+  status: InvestmentStatus;
+  amount: number;
+  finalAmount?: number;
+  /** Neutral base segment - the smaller of what went in and what (if
+   * anything) has come back out so far. */
+  baseAmount: number;
+  /** Green segment stacked on top of the base, only when completed above
+   * the invested amount. */
+  gain: number;
+  /** Red segment stacked on top of the base, only when completed below
+   * the invested amount - visually "the part that didn't come back". */
+  loss: number;
+  /** Full bar height for scaling - `max(amount, finalAmount ?? amount)`. */
+  total: number;
+}
+
+/** A row in the Fixed Deposit ledger - also moved here from Reports for the
+ * same reason as `InvestmentBar`: every FD ever opened, active or not,
+ * looks identical no matter which report period is selected. */
+interface FdLedgerRow {
+  id: string;
+  bankName: string;
+  principal: number;
+  percentage: number;
+  months: number;
+  status: FixedDepositStatus;
+  maturityDate: string;
+  maturityValue: number;
 }
 
 /** Whole days between `dateStr` and `from` (positive = in the future,
@@ -166,7 +228,14 @@ export class DashboardPage {
    * either way, but this keeps the "today" endpoint exactly equal to
    * `liquidCash()` by construction instead of by coincidence. */
   readonly cashSparkline = computed<CashSparkline>(() => {
-    const empty: CashSparkline = { linePath: '', areaPath: '', endPoint: null, deltaLabel: '', deltaPositive: true };
+    const empty: CashSparkline = {
+      linePath: '',
+      areaPath: '',
+      points: [],
+      endPoint: null,
+      deltaLabel: '',
+      deltaPositive: true,
+    };
     const s = this.state.state();
     if (!s) return empty;
 
@@ -203,10 +272,22 @@ export class DashboardPage {
     const height = 60;
     const pad = 6;
     const stepX = (width - pad * 2) / (values.length - 1);
-    const points = values.map((v, i) => ({
-      x: pad + i * stepX,
-      y: height - pad - ((v - min) / range) * (height - pad * 2),
-    }));
+    const points: CashSparklinePoint[] = values.map((v, i) => {
+      const [yr, mo, da] = dateKeys[i].split('-').map(Number);
+      return {
+        x: pad + i * stepX,
+        y: height - pad - ((v - min) / range) * (height - pad * 2),
+        // e.g. "16 Aug 2026" - the hover tooltip's whole reason for
+        // existing is to answer "which month/year is this point", so the
+        // label is spelled out in full rather than abbreviated further.
+        dateLabel: new Date(yr, mo - 1, da).toLocaleDateString(undefined, {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }),
+        valueLabel: this.money(v),
+      };
+    });
 
     const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     const areaPath = `${linePath} L${points[points.length - 1].x.toFixed(1)},${height - pad} L${points[0].x.toFixed(1)},${height - pad} Z`;
@@ -216,18 +297,83 @@ export class DashboardPage {
     return {
       linePath,
       areaPath,
+      points,
       endPoint: points[points.length - 1],
       deltaLabel: `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(delta))} · last ${SPARKLINE_DAYS} days`,
       deltaPositive: delta >= 0,
     };
   });
 
+  /** Index into `cashSparkline().points` currently under the pointer, or
+   * `null` when the pointer isn't over the chart - drives the hover dot/
+   * guide line and the date+value tooltip so a viewer can see exactly
+   * which day (month and year included) a point on the line belongs to. */
+  readonly sparklineHoverIndex = signal<number | null>(null);
+
+  readonly sparklineHoverPoint = computed<CashSparklinePoint | null>(() => {
+    const i = this.sparklineHoverIndex();
+    if (i === null) return null;
+    return this.cashSparkline().points[i] ?? null;
+  });
+
+  onSparklineHover(event: MouseEvent, svg: Element): void {
+    this.updateSparklineHover(event.clientX, svg);
+  }
+
+  /** Mobile has no hover, so a tap shows the nearest point's tooltip for a
+   * couple seconds instead - long enough to read a date and value without
+   * needing to hold a finger in place, short enough to get out of the way
+   * on its own. Deliberately doesn't call `preventDefault()`: this is a
+   * plain tap (`touchstart`, not `touchmove`), so it never fights the
+   * page's normal vertical scroll. */
+  onSparklineTouch(event: TouchEvent, svg: Element): void {
+    const touch = event.touches[0];
+    if (!touch) return;
+    this.updateSparklineHover(touch.clientX, svg);
+    clearTimeout(this.sparklineTouchTimer);
+    this.sparklineTouchTimer = setTimeout(() => this.onSparklineLeave(), 2000);
+  }
+
+  onSparklineLeave(): void {
+    this.sparklineHoverIndex.set(null);
+  }
+
+  private sparklineTouchTimer?: ReturnType<typeof setTimeout>;
+
+  /** Maps a pointer/touch's `clientX` to the nearest plotted day. The SVG
+   * is stretched to fill its container with `preserveAspectRatio="none"`,
+   * so a position's fraction across the element's rendered box
+   * (`clientX` vs `getBoundingClientRect()`) maps directly onto the same
+   * fraction of the 0-300 viewBox width - no need to account for
+   * letterboxing the way a preserved-aspect SVG would. Typed as the plain
+   * `Element` base (not `SVGSVGElement`) because Angular's template type
+   * checker resolves a `#ref` on a bare `<svg>` via `HTMLElementTagNameMap`
+   * and infers `HTMLElement` for it in some binding positions - only
+   * `getBoundingClientRect()` is needed here, which both share. */
+  private updateSparklineHover(clientX: number, svg: Element): void {
+    const points = this.cashSparkline().points;
+    if (points.length === 0) return;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const fraction = (clientX - rect.left) / rect.width;
+    const targetX = fraction * 300;
+    let nearest = 0;
+    let nearestDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const dist = Math.abs(points[i].x - targetX);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = i;
+      }
+    }
+    this.sparklineHoverIndex.set(nearest);
+  }
+
   // ----- Zone 2: Short-Term Liquidity -------------------------------------
 
   /** 'YYYY-MM' key of this account's very first transaction, or the current
    * month if there are no transactions yet - the floor that keeps
-   * `avgMonthlyBurn` and `categoryPace` from averaging in months before any
-   * data existed. */
+   * `avgMonthlyBurn` from averaging in months before any data existed. */
   private readonly earliestMonth = computed(() => {
     const s = this.state.state();
     if (!s || s.transactions.length === 0) return monthKeyOf();
@@ -235,11 +381,8 @@ export class DashboardPage {
   });
 
   /** The last `TRAILING_MONTHS` *completed* calendar months (this month
-   * excluded, floored at `earliestMonth`) as 'YYYY-MM' keys - the shared
-   * trailing window both `avgMonthlyBurn` and `categoryPace` average over,
-   * so the two widgets can never silently disagree on how many months of
-   * history they're each basing themselves on. Exposed as
-   * `trailingMonthsCounted` for the Category Pace caption. */
+   * excluded, floored at `earliestMonth`) as 'YYYY-MM' keys - the window
+   * `avgMonthlyBurn` averages over. */
   private readonly trailingMonthKeys = computed<string[]>(() => {
     const earliest = this.earliestMonth();
     const now = new Date();
@@ -250,8 +393,6 @@ export class DashboardPage {
     }
     return keys;
   });
-
-  readonly trailingMonthsCounted = computed(() => this.trailingMonthKeys().length);
 
   /** Mean of (Expense + Commitment) over `trailingMonthKeys()` - this month
    * itself is deliberately excluded, since a partial month would
@@ -414,59 +555,148 @@ export class DashboardPage {
     };
   });
 
-  /** Top `PACE_TOP_COUNT` expense categories by this month's spend, each
-   * against its own baseline over `trailingMonthKeys()` (zero-filled for
-   * quiet months within the account's history - the same shared trailing
-   * window `avgMonthlyBurn` uses, so the Liquidity row and this widget
-   * always agree on "how many months of history" they're each showing).
-   * A category with no baseline history yet gets `band: 'new'` instead of
-   * a fabricated ratio - deliberately `type: 'expense'` only, same
-   * "discretionary/variable spend" scope as the widget it replaces. One
-   * pass over transactions rather than one pass per category, to stay
-   * linear in transaction count regardless of how many categories exist. */
-  readonly categoryPace = computed<CategoryPaceRow[]>(() => {
+  /** This month's Expense transactions, split by category, as a donut -
+   * "where did my money go" rather than "is this normal" (the Cash Runway/
+   * Average Burn widgets already cover the latter). Deliberately
+   * `type: 'expense'` only, same "discretionary/variable spend" scope the
+   * old Category Pace widget used - commitments, income, transfers and
+   * Fixed Deposit/Investment principal movement aren't spend you can
+   * redirect, so they'd only dilute "where did today's choices go".
+   * Categories past `CATEGORY_DONUT_TOP_COUNT` are rolled into a single
+   * "Other" slice so the legend stays glance-able regardless of how many
+   * categories an account has. One pass over transactions rather than one
+   * pass per category, to stay linear in transaction count. */
+  readonly categorySpend = computed<CategorySpend>(() => {
+    const empty: CategorySpend = { hasExpense: false, total: 0, segments: [] };
     const s = this.state.state();
-    const trailingKeys = this.trailingMonthKeys();
-    if (!s || s.transactions.length === 0) return [];
+    if (!s) return empty;
 
-    const currentMonthKey = monthKeyOf();
-    const trailingSet = new Set(trailingKeys);
-
-    const currentTotals = new Map<string, number>();
-    const trailingTotals = new Map<string, number>();
+    const monthKey = monthKeyOf();
+    const totals = new Map<string, number>();
     for (const t of s.transactions) {
-      if (t.type !== 'expense') continue;
-      const monthKey = t.date.slice(0, 7);
+      if (t.type !== 'expense' || t.date.slice(0, 7) !== monthKey) continue;
       const catKey = t.categoryId ?? '__uncategorized__';
-      if (monthKey === currentMonthKey) {
-        currentTotals.set(catKey, (currentTotals.get(catKey) ?? 0) + t.amount);
-      } else if (trailingSet.has(monthKey)) {
-        trailingTotals.set(catKey, (trailingTotals.get(catKey) ?? 0) + t.amount);
-      }
+      totals.set(catKey, (totals.get(catKey) ?? 0) + t.amount);
     }
 
-    const topIds = [...currentTotals.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, PACE_TOP_COUNT)
-      .map(([id]) => id);
+    const total = [...totals.values()].reduce((sum, v) => sum + v, 0);
+    if (total <= 0) return empty;
 
-    return topIds.map((id) => {
-      const current = currentTotals.get(id) ?? 0;
-      const baseline = trailingKeys.length > 0 ? (trailingTotals.get(id) ?? 0) / trailingKeys.length : null;
-      const pct = baseline !== null && baseline > 0 ? (current / baseline) * 100 : null;
-      const cat = id === '__uncategorized__' ? undefined : s.categories.find((c) => c.id === id);
-      const band: PaceBand = pct === null ? 'new' : pct > 110 ? 'over' : pct < 80 ? 'under' : 'on';
+    const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, CATEGORY_DONUT_TOP_COUNT);
+    const restTotal = sorted.slice(CATEGORY_DONUT_TOP_COUNT).reduce((sum, [, amt]) => sum + amt, 0);
+
+    const rows = top.map(([id, amount]) => {
+      if (id === '__uncategorized__') {
+        return { id, name: 'Uncategorized', color: CATEGORY_COLOR_FALLBACK, amount };
+      }
+      const cat = s.categories.find((c) => c.id === id);
+      return { id, name: cat?.name ?? 'Uncategorized', color: cat?.color ?? CATEGORY_COLOR_FALLBACK, amount };
+    });
+    if (restTotal > 0) {
+      rows.push({ id: '__other__', name: 'Other', color: CATEGORY_COLOR_FALLBACK, amount: restTotal });
+    }
+
+    let cumulative = 0;
+    const segments: CategorySpendSegment[] = rows.map((r) => {
+      const pct = (r.amount / total) * 100;
+      const offset = DONUT_CIRCUMFERENCE / 4 - cumulative;
+      cumulative += pct;
       return {
-        id,
-        name: cat?.name ?? 'Uncategorized',
-        color: cat?.color ?? CATEGORY_COLOR_FALLBACK,
-        current,
-        baseline,
-        pct,
-        band,
+        id: r.id,
+        name: r.name,
+        color: r.color,
+        amount: r.amount,
+        pctLabel: Math.round(pct).toString(),
+        dashArray: `${pct} ${DONUT_CIRCUMFERENCE - pct}`,
+        offset,
       };
     });
+
+    return { hasExpense: true, total, segments };
   });
+
+  // ----- Zone 4: Portfolio -------------------------------------------------
+  // Everything here is today's live state, not scoped to any reporting
+  // period - moved over from Reports, where these looked identical no
+  // matter which month/year/range was selected in the period filter.
+
+  /** Gross assets - Liquid Cash (every non-card account balance, floored at
+   * 0 so an overdrawn total doesn't draw as a negative pie slice), Fixed
+   * Deposits and Investments principal - split into shares of the whole. */
+  readonly assetAllocation = computed<AssetAllocation>(() => {
+    const liquid = Math.max(0, this.liquidCash());
+    const fd = this.state.activeFixedDepositTotal();
+    const investments = this.state.activeInvestmentTotal();
+    const rows = [
+      { id: 'liquid', name: 'Liquid Cash', color: 'var(--accent)', amount: liquid },
+      { id: 'fd', name: 'Fixed Deposits', color: 'var(--warning)', amount: fd },
+      { id: 'investments', name: 'Investments', color: 'var(--investment)', amount: investments },
+    ].filter((r) => r.amount > 0);
+    const total = rows.reduce((sum, r) => sum + r.amount, 0);
+
+    let cumulative = 0;
+    const items: AssetAllocationSlice[] = rows.map((r) => {
+      const pct = total > 0 ? (r.amount / total) * 100 : 0;
+      const offset = DONUT_CIRCUMFERENCE / 4 - cumulative;
+      cumulative += pct;
+      return { ...r, dashArray: `${pct} ${DONUT_CIRCUMFERENCE - pct}`, offset };
+    });
+    return { total, items };
+  });
+
+  /** Every investment, principal as the neutral base segment plus whatever
+   * it gained (green, stacked on top) or lost (red, stacked on top) once
+   * completed. A still-active investment is just the base segment, since
+   * there's nothing to show yet. */
+  readonly investmentBreakdown = computed<{ bars: InvestmentBar[]; max: number }>(() => {
+    const investments = [...(this.state.state()?.investments ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+    const bars: InvestmentBar[] = investments.map((inv) => {
+      const gain = investmentGainValue(inv);
+      const loss = investmentLossValue(inv);
+      const finalOrAmount = inv.finalAmount ?? inv.amount;
+      return {
+        id: inv.id,
+        name: inv.name,
+        status: inv.status,
+        amount: inv.amount,
+        finalAmount: inv.finalAmount,
+        baseAmount: Math.min(inv.amount, finalOrAmount),
+        gain,
+        loss,
+        total: Math.max(inv.amount, finalOrAmount),
+      };
+    });
+    const max = Math.max(0, ...bars.map((b) => b.total));
+    return { bars, max };
+  });
+
+  /** Every Fixed Deposit on record (not just active ones - matured and
+   * withdrawn deposits stay visible as a record of what happened), soonest
+   * maturity first. */
+  readonly fixedDepositLedger = computed<FdLedgerRow[]>(() => {
+    const s = this.state.state();
+    if (!s) return [];
+    return [...s.fixedDeposits]
+      .sort((a, b) => fdMaturityDate(a).localeCompare(fdMaturityDate(b)))
+      .map((fd) => ({
+        id: fd.id,
+        bankName: s.banks.find((b) => b.id === fd.bankId)?.name ?? '—',
+        principal: fd.amount,
+        percentage: fd.percentage,
+        months: fd.months,
+        status: fd.status,
+        maturityDate: fdMaturityDate(fd),
+        maturityValue: fdMaturityValue(fd),
+      }));
+  });
+
+  /** A bar's height against its series max, as a percentage - 0 when the
+   * series has no data at all (`max` is 0) rather than a NaN/Infinity
+   * height. */
+  barHeightPercent(value: number, max: number): number {
+    return max > 0 ? (value / max) * 100 : 0;
+  }
 
   // ----- Zone 5: Recent Activity -------------------------------------------
 
@@ -503,20 +733,11 @@ export class DashboardPage {
     return formatAmountNumber(amount);
   }
 
-  /** Whole-number percentage for a ring/pace label - `null` (no income, or
-   * no baseline yet) renders as "0" rather than leaving the template to
-   * juggle a nullable number. */
+  /** Whole-number percentage for a ring label - `null` (no income this
+   * month) renders as "0" rather than leaving the template to juggle a
+   * nullable number. */
   pct0(value: number | null): string {
     return value === null ? '0' : Math.round(value).toString();
-  }
-
-  /** A Category Pace row's fill width against the fixed `PACE_AXIS_MAX`
-   * scale (see its doc comment) - capped at 100% of the bar itself so a
-   * category running well over its baseline still renders as a full bar
-   * plus its (uncapped) percentage label, not an overflowing one. */
-  paceFillPercent(row: CategoryPaceRow): number {
-    if (row.pct === null) return 0;
-    return Math.min(row.pct, PACE_AXIS_MAX) / PACE_AXIS_MAX * 100;
   }
 
   dateBadge(dateStr: string): { day: string; month: string } {

@@ -5,13 +5,13 @@ import { StateService } from '../../core/state.service';
 import { createEmptyState } from '../../core/models';
 
 /** Today's date, reused across tests so "this month" transactions always
- * land in `monthlyStats`/`savingsRate`/`categoryPace`'s current-month bucket
- * regardless of when the suite runs. */
+ * land in `monthlyStats`/`savingsRate`/`categorySpend`'s current-month
+ * bucket regardless of when the suite runs. */
 const TODAY = new Date().toISOString().slice(0, 10);
 
 /** The 1st of the month `monthsAgo` calendar months back - for building
- * transactions that land in `avgMonthlyBurn`/`categoryPace`'s trailing
- * (completed-month) window without ever landing in the current month.
+ * transactions that land in `avgMonthlyBurn`'s trailing (completed-month)
+ * window without ever landing in the current month.
  * Anchored to day 1 to sidestep month-length overflow (e.g. Mar 31 minus one
  * month isn't Feb 31). */
 function monthsAgoDate(monthsAgo: number): string {
@@ -309,49 +309,191 @@ describe('DashboardPage', () => {
     });
   });
 
-  describe('categoryPace', () => {
-    it('is empty when there are no expense transactions at all', () => {
-      expect(page.categoryPace()).toEqual([]);
+  describe('categorySpend', () => {
+    it('has no expense when there are no expense transactions at all', () => {
+      expect(page.categorySpend().hasExpense).toBe(false);
+      expect(page.categorySpend().segments).toEqual([]);
     });
 
-    it('flags a category "new" when it has no trailing baseline yet', () => {
+    it('totals this month\'s expense transactions by category, ignoring other months and other types', () => {
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
       const catId = state.state()!.categories[0].id;
       state.addTransaction({ date: TODAY, amount: 60, type: 'expense', accountType: 'cash', categoryId: catId });
+      state.addTransaction({ date: TODAY, amount: 40, type: 'expense', accountType: 'cash', categoryId: catId });
+      // Not counted: a commitment this month, and an expense from a prior month.
+      state.addTransaction({ date: TODAY, amount: 999, type: 'commitment', accountType: 'cash' });
+      state.addTransaction({ date: monthsAgoDate(1), amount: 999, type: 'expense', accountType: 'cash' });
 
-      const pace = page.categoryPace();
-      expect(pace.length).toBe(1);
-      expect(pace[0].band).toBe('new');
-      expect(pace[0].baseline).toBeNull();
+      const spend = page.categorySpend();
+      expect(spend.hasExpense).toBe(true);
+      expect(spend.total).toBe(100);
+      expect(spend.segments.length).toBe(1);
+      expect(spend.segments[0].name).toBe('Groceries');
+      expect(spend.segments[0].amount).toBe(100);
+      expect(spend.segments[0].pctLabel).toBe('100');
     });
 
-    it('bands a category "over" once this month clears 110% of its trailing average', () => {
-      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
-      const catId = state.state()!.categories[0].id;
-      // Baseline: 100/month over the last 3 completed months.
-      state.addTransaction({ date: monthsAgoDate(1), amount: 100, type: 'expense', accountType: 'cash', categoryId: catId });
-      state.addTransaction({ date: monthsAgoDate(2), amount: 100, type: 'expense', accountType: 'cash', categoryId: catId });
-      state.addTransaction({ date: monthsAgoDate(3), amount: 100, type: 'expense', accountType: 'cash', categoryId: catId });
-      // This month so far: well over baseline.
-      state.addTransaction({ date: TODAY, amount: 150, type: 'expense', accountType: 'cash', categoryId: catId });
-
-      const row = page.categoryPace()[0];
-      expect(row.baseline).toBeCloseTo(100, 5);
-      expect(row.pct).toBeCloseTo(150, 5);
-      expect(row.band).toBe('over');
-    });
-
-    it('keeps only the top 4 categories by this month’s spend', () => {
-      for (let i = 0; i < 5; i++) {
+    it('rolls categories past the top count into a single "Other" slice', () => {
+      for (let i = 0; i < 6; i++) {
         state.addCategory({ name: `Cat ${i}`, color: '#111', type: 'expense' });
       }
       const cats = state.state()!.categories;
+      // Amounts 10..60 - the top 5 (60,50,40,30,20) are kept individually,
+      // the smallest (10) is rolled into "Other".
       cats.forEach((c, i) => {
         state.addTransaction({ date: TODAY, amount: (i + 1) * 10, type: 'expense', accountType: 'cash', categoryId: c.id });
       });
 
-      expect(page.categoryPace().length).toBe(4);
-      expect(page.categoryPace()[0].current).toBe(50);
+      const spend = page.categorySpend();
+      expect(spend.segments.length).toBe(6);
+      expect(spend.segments[5].name).toBe('Other');
+      expect(spend.segments[5].amount).toBe(10);
+    });
+  });
+
+  describe('investmentBreakdown', () => {
+    beforeEach(() => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+    });
+
+    it('is empty with a zero max when there are no investments', () => {
+      expect(page.investmentBreakdown()).toEqual({ bars: [], max: 0 });
+    });
+
+    it('shows only the base (invested) segment for a still-active investment', () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+
+      const [bar] = page.investmentBreakdown().bars;
+      expect(bar.status).toBe('active');
+      expect(bar.baseAmount).toBe(1000);
+      expect(bar.gain).toBe(0);
+      expect(bar.loss).toBe(0);
+      expect(bar.total).toBe(1000);
+    });
+
+    it('splits a completed gain into a base segment plus a separate gain segment', () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+      const [inv] = state.state()!.investments;
+      state.completeInvestment(inv.id, TODAY, 1300);
+
+      const [bar] = page.investmentBreakdown().bars;
+      expect(bar.status).toBe('completed');
+      expect(bar.baseAmount).toBe(1000);
+      expect(bar.gain).toBe(300);
+      expect(bar.loss).toBe(0);
+      expect(bar.total).toBe(1300); // base + gain
+    });
+
+    it('splits a completed loss into a shorter base segment plus a separate loss segment, total unchanged', () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Risky Bet',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+      const [inv] = state.state()!.investments;
+      state.completeInvestment(inv.id, TODAY, 700);
+
+      const [bar] = page.investmentBreakdown().bars;
+      expect(bar.status).toBe('completed');
+      expect(bar.baseAmount).toBe(700);
+      expect(bar.gain).toBe(0);
+      expect(bar.loss).toBe(300);
+      expect(bar.total).toBe(1000); // base + loss, same as the original invested amount
+    });
+
+    it("isn't affected by the dashboard's own current-month scoping, same as Available Cash", () => {
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Old Investment',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 500,
+        date: '2020-01-01',
+      });
+
+      expect(page.investmentBreakdown().bars.length).toBe(1);
+    });
+  });
+
+  describe('assetAllocation', () => {
+    it('is empty when there are no assets at all', () => {
+      expect(page.assetAllocation()).toEqual({ items: [], total: 0 });
+    });
+
+    it('splits Liquid Cash, Fixed Deposits and Investments principal into shares of the whole', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 700 });
+      // No bankId on the FD - a pure memo, so it doesn't deduct from the
+      // bank balance above (see `addFixedDeposit`), keeping this test's
+      // expected total a simple sum of the three independent pieces.
+      state.addFixedDeposit({
+        amount: 200,
+        percentage: 3,
+        months: 12,
+        startDate: TODAY,
+        status: 'active',
+      });
+      const [bank] = state.state()!.banks;
+      state.addInvestment({ name: 'Tech Stock', toAccountId: bank.id, toAccountType: 'bank', amount: 100, date: TODAY });
+
+      const allocation = page.assetAllocation();
+      expect(allocation.total).toBe(700 + 200 + 100);
+      expect(allocation.items.map((i) => i.name)).toEqual(['Liquid Cash', 'Fixed Deposits', 'Investments']);
+    });
+
+    it('produces donut segments (dashArray) summing to a full 100-unit ring', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 500 });
+      const items = page.assetAllocation().items;
+      const totalDash = items.reduce((sum, s) => sum + Number(s.dashArray.split(' ')[0]), 0);
+      expect(totalDash).toBe(100);
+    });
+  });
+
+  describe('fixedDepositLedger', () => {
+    it('is empty when there are no fixed deposits', () => {
+      expect(page.fixedDepositLedger()).toEqual([]);
+    });
+
+    it('lists every fixed deposit regardless of status, soonest maturity first', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+      const [bank] = state.state()!.banks;
+      state.addFixedDeposit({
+        bankId: bank.id,
+        amount: 1000,
+        percentage: 3,
+        months: 12,
+        startDate: '2026-01-01',
+        status: 'active',
+      });
+      state.addFixedDeposit({
+        bankId: bank.id,
+        amount: 500,
+        percentage: 2,
+        months: 3,
+        startDate: '2026-01-01',
+        status: 'active',
+      });
+
+      const rows = page.fixedDepositLedger();
+      expect(rows.length).toBe(2);
+      expect(rows[0].months).toBe(3); // matures sooner than the 12-month deposit
+      expect(rows[0].bankName).toBe('Maybank');
     });
   });
 
@@ -441,8 +583,10 @@ describe('DashboardPage', () => {
       state.addTransaction({ date: TODAY, amount: 20, type: 'expense', accountType: 'cash' });
       fixture.detectChanges();
       let el = fixture.nativeElement as HTMLElement;
-      // 1 background track + 3 segments (committed/variable/saved).
-      expect(el.querySelectorAll('.donut-svg circle').length).toBe(4);
+      // 1 background track + 3 segments (committed/variable/saved) - scoped
+      // to the Savings Rate card specifically, since "Where It Went" below
+      // it renders its own `.donut-svg` once there's any expense too.
+      expect(el.querySelectorAll('.savings-rate-card .donut-svg circle').length).toBe(4);
       expect(el.querySelector('.chip-bad')).toBeNull();
 
       state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
@@ -451,7 +595,7 @@ describe('DashboardPage', () => {
       expect(el.querySelector('.chip-bad')?.textContent).toContain('Overspent');
     });
 
-    it('shows a "New" chip for a category pace row with no trailing baseline', () => {
+    it('draws a "Where It Went" donut segment per category, using each category\'s own saved color', () => {
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
       state.addTransaction({
         date: TODAY,
@@ -462,7 +606,55 @@ describe('DashboardPage', () => {
       });
       fixture.detectChanges();
       const el = fixture.nativeElement as HTMLElement;
-      expect(el.querySelector('.chip-info')?.textContent).toContain('New');
+      // 1 background track + 1 segment (a single category, no "Other").
+      expect(el.querySelectorAll('.category-spend-card .donut-svg circle').length).toBe(2);
+      expect(el.querySelector('.category-spend-card .legend-row')?.textContent).toContain('Groceries');
+      const segment = el.querySelector('.category-spend-card .donut-segment');
+      expect(segment?.getAttribute('stroke')).toBe('#EF4444');
+    });
+
+    it('draws an Asset Allocation donut segment per asset class, with the amount (not a percentage) in the legend', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 700 });
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      // 1 background track + 1 segment (Liquid Cash only, no FD/Investments yet).
+      expect(el.querySelectorAll('.asset-allocation-card .donut-svg circle').length).toBe(2);
+      expect(el.querySelector('.asset-allocation-card .legend-row')?.textContent).toContain('Liquid Cash');
+      expect(el.querySelector('.asset-allocation-card .amt')?.textContent).toContain('700.00');
+    });
+
+    it('shows the Investments empty state when there are none, and a bar per investment once added', () => {
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      const headings = Array.from(el.querySelectorAll('.section-head h2')).map((h) => h.textContent?.trim());
+      expect(headings).toContain('Investments');
+      expect(el.textContent).toContain('No investments recorded yet.');
+
+      const [bank] = state.state()!.banks;
+      state.addInvestment({
+        name: 'Tech Stock',
+        toAccountId: bank.id,
+        toAccountType: 'bank',
+        amount: 1000,
+        date: TODAY,
+      });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.investment-label')?.textContent).toContain('Tech Stock');
+    });
+
+    it('shows the Fixed Deposits empty state when there are none, and a row per deposit once added', () => {
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('No fixed deposits recorded yet.');
+
+      state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
+      const bankId = state.state()!.banks[0].id;
+      state.addFixedDeposit({ bankId, startDate: TODAY, amount: 1000, percentage: 5, months: 12, status: 'active' });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.fd-row .fd-bank')?.textContent).toContain('Maybank');
     });
 
     it('shows the empty state instead of a list when there are no transactions', () => {

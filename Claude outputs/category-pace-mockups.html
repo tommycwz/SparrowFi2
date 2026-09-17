@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Category Pace — mockups</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f6;
+    --border: #e1e6ee;
+    --text: #10182a;
+    --text-muted: #6b7688;
+    --accent: #1d4ed8;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --radius: 14px;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg: #0b0f19;
+      --surface: #131a2b;
+      --surface-2: #1b2436;
+      --border: #26314a;
+      --text: #eef2f9;
+      --text-muted: #94a1b8;
+      --accent: #2563eb;
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --bg: #0b0f19;
+    --surface: #131a2b;
+    --surface-2: #1b2436;
+    --border: #26314a;
+    --text: #eef2f9;
+    --text-muted: #94a1b8;
+    --accent: #2563eb;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .page-head {
+    max-width: 720px;
+    margin: 0 auto 1.5rem;
+  }
+
+  .page-head h1 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    margin: 0 0 0.3rem;
+  }
+
+  .page-head p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .stack {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem 1.2rem;
+  }
+
+  .option-label {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .widget-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    margin: 0 0 0.15rem;
+  }
+
+  .widget-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .option-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.9rem;
+    padding-top: 0.7rem;
+    border-top: 1px dashed var(--border);
+    line-height: 1.5;
+  }
+
+  .muted { color: var(--text-muted); }
+
+  /* ===== shared status color helpers ===== */
+  .band-under { color: var(--success); }
+  .band-on { color: var(--warning); }
+  .band-over { color: var(--danger); }
+  .fill-under { background: var(--success); }
+  .fill-on { background: var(--warning); }
+  .fill-over { background: var(--danger); }
+
+  /* ===== Option A: paired amount bars ===== */
+  .pace-a-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.7rem;
+  }
+
+  .pace-a-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .pace-a-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .pace-a-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .pace-a-multiple {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--surface-2);
+  }
+
+  .pace-a-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .pace-a-bar-label {
+    width: 68px;
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-align: right;
+  }
+
+  .pace-a-track {
+    flex: 1;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pace-a-fill {
+    height: 100%;
+    border-radius: 999px;
+  }
+
+  .pace-a-fill.baseline {
+    background: var(--text-muted);
+    opacity: 0.45;
+  }
+
+  .pace-a-value {
+    width: 76px;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  /* ===== Option B: small-multiple trend ===== */
+  .pace-b-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    margin-top: 0.7rem;
+  }
+
+  .pace-b-row {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+  }
+
+  .pace-b-name-col {
+    width: 118px;
+    flex-shrink: 0;
+  }
+
+  .pace-b-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .pace-b-multiple {
+    font-size: 0.72rem;
+    font-weight: 800;
+    margin-top: 0.1rem;
+  }
+
+  .pace-b-chart {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 46px;
+    position: relative;
+  }
+
+  .pace-b-baseline-rule {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed var(--border);
+  }
+
+  .pace-b-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .pace-b-bar {
+    width: 100%;
+    max-width: 22px;
+    border-radius: 4px 4px 2px 2px;
+    background: var(--border);
+  }
+
+  .pace-b-bar.current {
+    background: var(--danger);
+  }
+
+  .pace-b-col-label {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+
+  /* ===== Option C: existing layout, softened label ===== */
+  .pace-c-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-top: 0.7rem;
+  }
+
+  .pace-c-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .pace-c-name {
+    width: 110px;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pace-c-track {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    position: relative;
+  }
+
+  .pace-c-fill {
+    height: 100%;
+    border-radius: 999px;
+  }
+
+  .pace-c-mark {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    left: 62.5%;
+    background: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .pace-c-pct {
+    width: 64px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 0.82rem;
+    font-weight: 800;
+  }
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <h1>Category Pace — three easier-to-read options</h1>
+    <p>Same two categories from your dashboard (Bills &amp; Utilities and Food &amp; Drink), redrawn three ways. The current widget shows a raw percentage against your own 3-month average, which is exactly correct but hard to size up at 1,389%. These aim to make the "how much bigger than usual" part obvious without doing math.</p>
+  </div>
+
+  <div class="stack">
+
+    <!-- ============ OPTION A ============ -->
+    <div class="card">
+      <span class="option-label">Option A</span>
+      <h3 class="widget-title">Category Pace <span class="widget-sub">this month vs 3-mo avg</span></h3>
+
+      <div class="pace-a-list">
+        <div class="pace-a-row">
+          <div class="pace-a-top">
+            <span class="pace-a-name">Bills &amp; Utilities</span>
+            <span class="pace-a-multiple band-over" style="background: color-mix(in srgb, var(--danger) 14%, transparent)">14&times; usual</span>
+          </div>
+          <div class="pace-a-bar-row">
+            <span class="pace-a-bar-label">This month</span>
+            <div class="pace-a-track"><div class="pace-a-fill fill-over" style="width: 100%"></div></div>
+            <span class="pace-a-value">RM722.40</span>
+          </div>
+          <div class="pace-a-bar-row">
+            <span class="pace-a-bar-label">Your avg</span>
+            <div class="pace-a-track"><div class="pace-a-fill baseline" style="width: 7%"></div></div>
+            <span class="pace-a-value muted">RM52.00</span>
+          </div>
+        </div>
+
+        <div class="pace-a-row">
+          <div class="pace-a-top">
+            <span class="pace-a-name">Food &amp; Drink</span>
+            <span class="pace-a-multiple band-over" style="background: color-mix(in srgb, var(--danger) 14%, transparent)">7.5&times; usual</span>
+          </div>
+          <div class="pace-a-bar-row">
+            <span class="pace-a-bar-label">This month</span>
+            <div class="pace-a-track"><div class="pace-a-fill fill-over" style="width: 100%"></div></div>
+            <span class="pace-a-value">RM450.00</span>
+          </div>
+          <div class="pace-a-bar-row">
+            <span class="pace-a-bar-label">Your avg</span>
+            <div class="pace-a-track"><div class="pace-a-fill baseline" style="width: 13.3%"></div></div>
+            <span class="pace-a-value muted">RM60.00</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="option-note">Two bars per category, both in real Ringgit: what you actually spent this month, and what you normally spend. The gap between the bars <em>is</em> the story — no division required to see it. The pill still gives a one-glance headline ("14&times; usual") for anyone who wants a single number.</p>
+    </div>
+
+    <!-- ============ OPTION B ============ -->
+    <div class="card">
+      <span class="option-label">Option B</span>
+      <h3 class="widget-title">Category Pace <span class="widget-sub">last 4 months</span></h3>
+
+      <div class="pace-b-list">
+        <div class="pace-b-row">
+          <div class="pace-b-name-col">
+            <div class="pace-b-name">Bills &amp; Utilities</div>
+            <div class="pace-b-multiple band-over">14&times; usual</div>
+          </div>
+          <div class="pace-b-chart">
+            <div class="pace-b-baseline-rule" style="bottom: 6px"></div>
+            <div class="pace-b-col"><div class="pace-b-bar" style="height: 6px"></div><span class="pace-b-col-label">Jun</span></div>
+            <div class="pace-b-col"><div class="pace-b-bar" style="height: 7px"></div><span class="pace-b-col-label">Jul</span></div>
+            <div class="pace-b-col"><div class="pace-b-bar" style="height: 8px"></div><span class="pace-b-col-label">Aug</span></div>
+            <div class="pace-b-col"><div class="pace-b-bar current" style="height: 44px"></div><span class="pace-b-col-label">Sep</span></div>
+          </div>
+        </div>
+
+        <div class="pace-b-row">
+          <div class="pace-b-name-col">
+            <div class="pace-b-name">Food &amp; Drink</div>
+            <div class="pace-b-multiple band-over">7.5&times; usual</div>
+          </div>
+          <div class="pace-b-chart">
+            <div class="pace-b-baseline-rule" style="bottom: 8px"></div>
+            <div class="pace-b-col"><div class="pace-b-bar" style="height: 7px"></div><span class="pace-b-col-label">Jun</span></div>
+            <div class="pace-b-col"><div class="pace-b-bar" style="height: 8px"></div><span class="pace-b-col-label">Jul</span></div>
+            <div class="pace-b-col"><div class="pace-b-bar" style="height: 9px"></div><span class="pace-b-col-label">Aug</span></div>
+            <div class="pace-b-col"><div class="pace-b-bar current" style="height: 44px"></div><span class="pace-b-col-label">Sep</span></div>
+          </div>
+        </div>
+      </div>
+
+      <p class="option-note">Four small bars per category — your last three months, then this month. The dashed line marks your average. This month towering over its neighbors makes "this is unusual" visually obvious, and it also answers a question percentages can't: was last month already climbing, or did this come out of nowhere?</p>
+    </div>
+
+    <!-- ============ OPTION C ============ -->
+    <div class="card">
+      <span class="option-label">Option C — smallest change</span>
+      <h3 class="widget-title">Category Pace <span class="widget-sub">this month vs 3-mo avg</span></h3>
+
+      <div class="pace-c-list">
+        <div class="pace-c-row">
+          <span class="pace-c-name">Bills &amp; Utilities</span>
+          <div class="pace-c-track">
+            <div class="pace-c-fill fill-over" style="width: 100%"></div>
+            <div class="pace-c-mark"></div>
+          </div>
+          <span class="pace-c-pct band-over">14&times;</span>
+        </div>
+        <div class="pace-c-row">
+          <span class="pace-c-name">Food &amp; Drink</span>
+          <div class="pace-c-track">
+            <div class="pace-c-fill fill-over" style="width: 100%"></div>
+            <div class="pace-c-mark"></div>
+          </div>
+          <span class="pace-c-pct band-over">7.5&times;</span>
+        </div>
+      </div>
+
+      <p class="option-note">Same bar/axis/tick you already have (nothing to rebuild) — only the number label changes. Under roughly 200% it still reads as a percentage ("142%"); past that it switches to a multiple ("14&times;"), which is the smaller change to ship but doesn't add the real Ringgit amounts the other two options show.</p>
+    </div>
+
+  </div>
+
+</body>
+</html>

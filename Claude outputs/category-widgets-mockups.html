@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Category widgets — mockups</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f6;
+    --border: #e1e6ee;
+    --text: #10182a;
+    --text-muted: #6b7688;
+    --accent: #1d4ed8;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --radius: 14px;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg: #0b0f19;
+      --surface: #131a2b;
+      --surface-2: #1b2436;
+      --border: #26314a;
+      --text: #eef2f9;
+      --text-muted: #94a1b8;
+      --accent: #2563eb;
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --bg: #0b0f19;
+    --surface: #131a2b;
+    --surface-2: #1b2436;
+    --border: #26314a;
+    --text: #eef2f9;
+    --text-muted: #94a1b8;
+    --accent: #2563eb;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .page-head {
+    max-width: 720px;
+    margin: 0 auto 1.5rem;
+  }
+
+  .page-head h1 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    margin: 0 0 0.3rem;
+  }
+
+  .page-head p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .stack {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem 1.2rem;
+  }
+
+  .option-label {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .widget-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    margin: 0 0 0.15rem;
+  }
+
+  .widget-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .option-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.9rem;
+    padding-top: 0.7rem;
+    border-top: 1px dashed var(--border);
+    line-height: 1.5;
+  }
+
+  .muted { color: var(--text-muted); }
+
+  /* ===== Option A: mini donut ===== */
+  .donut-row {
+    display: flex;
+    align-items: center;
+    gap: 1.4rem;
+    margin-top: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .donut-svg {
+    flex-shrink: 0;
+    transform: rotate(-90deg);
+  }
+
+  .donut-center {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    flex-shrink: 0;
+  }
+
+  .donut-center-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .donut-center-amt {
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .donut-center-cap {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    margin-top: 0.1rem;
+  }
+
+  .donut-legend {
+    flex: 1;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .donut-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .donut-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .donut-legend-name {
+    flex: 1;
+    font-weight: 600;
+  }
+
+  .donut-legend-pct {
+    font-weight: 800;
+    width: 34px;
+    text-align: right;
+  }
+
+  .donut-legend-amt {
+    color: var(--text-muted);
+    width: 76px;
+    text-align: right;
+    font-size: 0.74rem;
+  }
+
+  /* ===== Option B: extremes callouts ===== */
+  .extreme-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 0.7rem;
+  }
+
+  @media (max-width: 420px) {
+    .extreme-grid { grid-template-columns: 1fr; }
+  }
+
+  .extreme-tile {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 0.75rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .extreme-cap {
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+  }
+
+  .extreme-name {
+    font-size: 0.92rem;
+    font-weight: 800;
+  }
+
+  .extreme-figure {
+    font-size: 1.3rem;
+    font-weight: 800;
+  }
+
+  .extreme-figure.over { color: var(--danger); }
+  .extreme-figure.under { color: var(--success); }
+
+  .extreme-sub {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+
+  /* ===== Option C: uncategorized nudge ===== */
+  .nudge-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.6rem;
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .nudge-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--warning) 16%, transparent);
+    color: var(--warning);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .nudge-text {
+    flex: 1;
+  }
+
+  .nudge-headline {
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .nudge-sub {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-top: 0.1rem;
+  }
+
+  .nudge-btn {
+    flex-shrink: 0;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-radius: 999px;
+    padding: 0.4rem 0.8rem;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <h1>Category widgets — three alternatives to Category Pace</h1>
+    <p>Illustrative numbers built on the same account: this month's expenses split across Bills &amp; Utilities, Food &amp; Drink, Groceries, Transport and Entertainment. Each answers a different question than "is this normal" — pick whichever's most useful day to day, or mix pieces.</p>
+  </div>
+
+  <div class="stack">
+
+    <!-- ============ OPTION A: mini donut ============ -->
+    <div class="card">
+      <span class="option-label">Option A</span>
+      <h3 class="widget-title">Where It Went <span class="widget-sub">this month's expenses</span></h3>
+
+      <div class="donut-row">
+        <div class="donut-center">
+          <svg class="donut-svg" width="96" height="96" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--surface-2)" stroke-width="4"></circle>
+            <!-- Bills & Utilities 41% -->
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#6366f1" stroke-width="4"
+              stroke-dasharray="41 59" stroke-dashoffset="0"></circle>
+            <!-- Food & Drink 26% -->
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#f97316" stroke-width="4"
+              stroke-dasharray="26 74" stroke-dashoffset="-41"></circle>
+            <!-- Groceries 15% -->
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#10b981" stroke-width="4"
+              stroke-dasharray="15 85" stroke-dashoffset="-67"></circle>
+            <!-- Transport 10% -->
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0ea5e9" stroke-width="4"
+              stroke-dasharray="10 90" stroke-dashoffset="-82"></circle>
+            <!-- Entertainment 5% -->
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#ec4899" stroke-width="4"
+              stroke-dasharray="5 95" stroke-dashoffset="-92"></circle>
+            <!-- Other 3% -->
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--text-muted)" stroke-width="4"
+              stroke-dasharray="3 97" stroke-dashoffset="-97"></circle>
+          </svg>
+          <div class="donut-center-label">
+            <span class="donut-center-amt">RM1,760</span>
+            <span class="donut-center-cap">total</span>
+          </div>
+        </div>
+
+        <div class="donut-legend">
+          <div class="donut-legend-row">
+            <span class="donut-dot" style="background:#6366f1"></span>
+            <span class="donut-legend-name">Bills &amp; Utilities</span>
+            <span class="donut-legend-pct">41%</span>
+            <span class="donut-legend-amt">RM722.40</span>
+          </div>
+          <div class="donut-legend-row">
+            <span class="donut-dot" style="background:#f97316"></span>
+            <span class="donut-legend-name">Food &amp; Drink</span>
+            <span class="donut-legend-pct">26%</span>
+            <span class="donut-legend-amt">RM450.00</span>
+          </div>
+          <div class="donut-legend-row">
+            <span class="donut-dot" style="background:#10b981"></span>
+            <span class="donut-legend-name">Groceries</span>
+            <span class="donut-legend-pct">15%</span>
+            <span class="donut-legend-amt">RM260.00</span>
+          </div>
+          <div class="donut-legend-row">
+            <span class="donut-dot" style="background:#0ea5e9"></span>
+            <span class="donut-legend-name">Transport</span>
+            <span class="donut-legend-pct">10%</span>
+            <span class="donut-legend-amt">RM180.00</span>
+          </div>
+          <div class="donut-legend-row">
+            <span class="donut-dot" style="background:var(--text-muted)"></span>
+            <span class="donut-legend-name">Entertainment + Other</span>
+            <span class="donut-legend-pct">8%</span>
+            <span class="donut-legend-amt">RM148.00</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="option-note">Answers "where did my money go" rather than "is this normal" — the two are genuinely different questions and this app doesn't currently have a lightweight glance version of the first one (Reports has the full top-6 version, but that's a page away). Each slice would use the category's own saved color, same as everywhere else in the app, so no new color palette is needed.</p>
+    </div>
+
+    <!-- ============ OPTION B: extremes callouts ============ -->
+    <div class="card">
+      <span class="option-label">Option B</span>
+      <h3 class="widget-title">Category Extremes <span class="widget-sub">vs your 3-mo avg</span></h3>
+
+      <div class="extreme-grid">
+        <div class="extreme-tile">
+          <span class="extreme-cap">Furthest over</span>
+          <span class="extreme-name">Bills &amp; Utilities</span>
+          <span class="extreme-figure over">14&times;</span>
+          <span class="extreme-sub">RM722.40 vs RM52.00 avg</span>
+        </div>
+        <div class="extreme-tile">
+          <span class="extreme-cap">Furthest under</span>
+          <span class="extreme-name">Transport</span>
+          <span class="extreme-figure under">-35%</span>
+          <span class="extreme-sub">RM117.00 vs RM180.00 avg</span>
+        </div>
+      </div>
+
+      <p class="option-note">Same underlying math as Category Pace, just distilled to the two extremes instead of a scanning list of four. Reads in under a second: one thing ran hot, one thing ran cold. Trades away visibility into the "on pace" middle categories, which the full Category Pace list still shows if you want that detail.</p>
+    </div>
+
+    <!-- ============ OPTION C: uncategorized nudge ============ -->
+    <div class="card">
+      <span class="option-label">Option C</span>
+      <h3 class="widget-title">Data Hygiene</h3>
+
+      <div class="nudge-row">
+        <div class="nudge-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.6 2.6a2 2 0 0 1 1.4-.6H20a2 2 0 0 1 2 2v6a2 2 0 0 1-.6 1.4l-9 9a2 2 0 0 1-2.8 0l-6-6a2 2 0 0 1 0-2.8Z" />
+            <circle cx="16.5" cy="7.5" r="1.5" />
+          </svg>
+        </div>
+        <div class="nudge-text">
+          <div class="nudge-headline">RM120.00 has no category this month</div>
+          <div class="nudge-sub">4 transactions — tag them so Category Pace and Reports stay accurate</div>
+        </div>
+        <span class="nudge-btn">Review</span>
+      </div>
+
+      <p class="option-note">Not analysis - a prompt. Uncategorized spend quietly skews every other category widget (it gets folded into "Uncategorized" in Reports and excluded entirely from Category Pace), so surfacing it on the Dashboard closes the loop instead of leaving it to be discovered on the Transactions page later. Would only appear when there's something to flag - silent otherwise.</p>
+    </div>
+
+  </div>
+
+</body>
+</html>

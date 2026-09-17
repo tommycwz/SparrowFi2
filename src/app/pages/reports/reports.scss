@@ -269,18 +269,6 @@
   font-weight: 700;
 }
 
-.legend-dot.invested {
-  background: var(--investment);
-}
-
-.legend-dot.gain {
-  background: var(--success);
-}
-
-.legend-dot.loss {
-  background: var(--danger);
-}
-
 .legend-dot.commitment {
   background: var(--commitment);
 }
@@ -341,91 +329,6 @@
   font-weight: 600;
   fill: var(--text-muted);
   text-anchor: middle;
-}
-
-/* ----- Investments (per-investment principal vs. gain/loss) ----------------- */
-
-.investment-chart {
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-start;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  gap: 0.75rem;
-  height: 180px;
-  padding-bottom: 0.25rem;
-}
-
-.investment-col {
-  flex: 0 0 76px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.3rem;
-  min-width: 0;
-}
-
-.investment-bars {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: 100%;
-}
-
-.investment-bar-track {
-  width: 60%;
-  max-width: 28px;
-  min-height: 2px;
-  display: flex;
-  /* Document order is [gain-or-loss?, base] - plain (non-reversed) column
-     stacking puts the first child at the top and the last at the bottom,
-     so "base" (the principal, always last) anchors the bottom of the bar
-     and any gain/loss segment stacks visually on top of it. Using
-     column-reverse here (as a previous version of this chart did) flips
-     that and made the delta segment look like the foundation instead of
-     the principal - the bug the CSS pass fixed. */
-  flex-direction: column;
-  border-radius: 4px 4px 0 0;
-  overflow: hidden;
-}
-
-.investment-bar-segment.base {
-  background: var(--investment);
-}
-
-.investment-bar-segment.gain {
-  background: var(--success);
-}
-
-.investment-bar-segment.loss {
-  background: var(--danger);
-}
-
-.investment-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  max-width: 76px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.investment-amount,
-.investment-sub {
-  font-size: 0.68rem;
-  max-width: 76px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.investment-sub.positive {
-  color: var(--success);
-}
-
-.investment-sub.negative {
-  color: var(--danger);
 }
 
 /* ----- Income/Expense analysis (two-column, mirrors Dashboard) -------------- */
@@ -728,81 +631,6 @@
 .channel-tab.active {
   background: var(--accent);
   color: var(--accent-contrast);
-}
-
-/* ----- Fixed Deposits ledger -------------------------------------------------- */
-
-.fd-ledger {
-  display: flex;
-  flex-direction: column;
-}
-
-.fd-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.75rem 0;
-}
-
-.fd-row:not(:last-child) {
-  border-bottom: 1px solid var(--border);
-}
-
-.fd-row-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.fd-bank {
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-
-.fd-status {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.fd-status-active {
-  background: color-mix(in srgb, var(--success) 16%, transparent);
-  color: var(--success);
-}
-
-.fd-status-matured {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-}
-
-.fd-status-withdrawn {
-  background: var(--surface-2);
-  color: var(--text-muted);
-}
-
-.fd-row-detail {
-  font-size: 0.75rem;
-}
-
-.fd-row-amounts {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-}
-
-.fd-principal {
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.fd-maturity {
-  font-weight: 800;
 }
 
 /* ----- Stress test scenario table -------------------------------------------- */

@@ -2,9 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
-import { CURRENCIES, FixedDepositStatus, InvestmentStatus, Transaction, TransactionType } from '../../core/models';
-import { investmentGainValue, investmentLossValue } from '../../core/investment.util';
-import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
+import { CURRENCIES, Transaction, TransactionType } from '../../core/models';
 import { formatAmountNumber, monthKeyOf } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { InfoTipComponent } from '../../shared/info-tip';
@@ -48,40 +46,6 @@ export const SPENDING_CHANNEL_OPTIONS = ['bank', 'wallet', 'card'] as const;
 export type SpendingChannel = (typeof SPENDING_CHANNEL_OPTIONS)[number];
 const SPENDING_CHANNEL_LABELS: Record<SpendingChannel, string> = { bank: 'Bank', wallet: 'Wallet', card: 'Card' };
 const SPENDING_CHANNEL_ICONS: Record<SpendingChannel, string> = { bank: 'bank', wallet: 'wallet', card: 'card' };
-
-/** One stacked bar's worth of drawing data for the Investments chart - see
- * `investmentBreakdown` for how the three segments are derived. */
-interface InvestmentBar {
-  id: string;
-  name: string;
-  status: InvestmentStatus;
-  amount: number;
-  finalAmount?: number;
-  /** Neutral base segment - the smaller of what went in and what (if
-   * anything) has come back out so far. */
-  baseAmount: number;
-  /** Green segment stacked on top of the base, only when completed above
-   * the invested amount. */
-  gain: number;
-  /** Red segment stacked on top of the base, only when completed below
-   * the invested amount - visually "the part that didn't come back". */
-  loss: number;
-  /** Full bar height for scaling - `max(amount, finalAmount ?? amount)`. */
-  total: number;
-}
-
-type AllocationSlice = CategorySlice;
-
-interface FdLedgerRow {
-  id: string;
-  bankName: string;
-  principal: number;
-  percentage: number;
-  months: number;
-  status: FixedDepositStatus;
-  maturityDate: string;
-  maturityValue: number;
-}
 
 interface VulnerabilityDot {
   x: number;
@@ -610,91 +574,6 @@ export class ReportsPage {
         show: i % labelStep === 0 || i === rows.length - 1,
       })),
     };
-  });
-
-  // ----- Investments -----------------------------------------------------------
-  // Deliberately every investment regardless of the period filter above (an
-  // investment can span months between opening and completing), same
-  // "current, not period-scoped" reasoning as Current Asset Balances below -
-  // one bar per investment, principal as the neutral base segment plus
-  // whatever it gained (green, stacked on top) or lost (red, stacked on
-  // top) once completed. A still-active investment is just the base
-  // segment, since there's nothing to show yet.
-
-  readonly investmentBreakdown = computed<{ bars: InvestmentBar[]; max: number }>(() => {
-    const investments = [...(this.state.state()?.investments ?? [])].sort((a, b) =>
-      b.date.localeCompare(a.date),
-    );
-    const bars: InvestmentBar[] = investments.map((inv) => {
-      const gain = investmentGainValue(inv);
-      const loss = investmentLossValue(inv);
-      const finalOrAmount = inv.finalAmount ?? inv.amount;
-      return {
-        id: inv.id,
-        name: inv.name,
-        status: inv.status,
-        amount: inv.amount,
-        finalAmount: inv.finalAmount,
-        baseAmount: Math.min(inv.amount, finalOrAmount),
-        gain,
-        loss,
-        total: Math.max(inv.amount, finalOrAmount),
-      };
-    });
-    const max = Math.max(0, ...bars.map((b) => b.total));
-    return { bars, max };
-  });
-
-  // ----- Portfolio & Asset Allocation -------------------------------------------
-  // Deliberately today's live figures (`state`'s own signals), not
-  // recomputed as of the report period's end date - same "current, not
-  // period-scoped" reasoning as Investments and Current Asset Balances.
-
-  /** Gross assets - Liquid Cash (every non-card account balance, floored at
-   * 0 so an overdrawn total doesn't draw as a negative pie slice),
-   * Fixed Deposits and Investments principal - split into shares of the
-   * whole. The first place in the app that visualizes overall composition
-   * rather than a flat list of balances. */
-  readonly assetAllocation = computed<{ items: AllocationSlice[]; total: number }>(() => {
-    const liquid = Math.max(
-      0,
-      this.state
-        .accountBalances()
-        .filter((a) => a.kind !== 'card')
-        .reduce((sum, a) => sum + a.balance, 0),
-    );
-    const fd = this.state.activeFixedDepositTotal();
-    const investments = this.state.activeInvestmentTotal();
-    const rows = [
-      { id: 'liquid', name: 'Liquid Cash', color: 'var(--accent)', amount: liquid },
-      { id: 'fd', name: 'Fixed Deposits', color: 'var(--warning)', amount: fd },
-      { id: 'investments', name: 'Investments', color: 'var(--investment)', amount: investments },
-    ].filter((r) => r.amount > 0);
-    const total = rows.reduce((sum, r) => sum + r.amount, 0);
-    return { items: rows.map((r) => ({ ...r, percent: total > 0 ? (r.amount / total) * 100 : 0 })), total };
-  });
-
-  readonly assetAllocationDonutSegments = computed(() => this.toDonutSegments(this.assetAllocation()));
-
-  /** Every Fixed Deposit on record (not just active ones - matured and
-   * withdrawn deposits stay visible as a record of what happened), soonest
-   * maturity first. Previously Fixed Deposits had no dedicated Report
-   * section at all beyond being folded into the account grid. */
-  readonly fixedDepositLedger = computed<FdLedgerRow[]>(() => {
-    const s = this.state.state();
-    if (!s) return [];
-    return [...s.fixedDeposits]
-      .sort((a, b) => fdMaturityDate(a).localeCompare(fdMaturityDate(b)))
-      .map((fd) => ({
-        id: fd.id,
-        bankName: s.banks.find((b) => b.id === fd.bankId)?.name ?? '—',
-        principal: fd.amount,
-        percentage: fd.percentage,
-        months: fd.months,
-        status: fd.status,
-        maturityDate: fdMaturityDate(fd),
-        maturityValue: fdMaturityValue(fd),
-      }));
   });
 
   // ----- Structural Vulnerability / Stress Test ---------------------------------
