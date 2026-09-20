@@ -96,6 +96,15 @@ textarea {
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
   width: 100%;
+  /* `label` (below) is `display: flex`, which makes every field its direct
+     flex item - and flex items default to `min-width: auto`, meaning they
+     refuse to shrink narrower than their own *content*. For a native
+     `<input type="date">`/`type="time">` that content is the browser's own
+     formatted value/placeholder (e.g. "20 Sep 2026"), which can be wider
+     than the modal on a narrow phone screen - so `width: 100%` was being
+     ignored and the box overflowed off the right edge instead of shrinking
+     to fit. This override is what actually lets `width: 100%` win. */
+  min-width: 0;
   /* Explicit, not inherited - every field in this app sits inside a
      <label>, and `font: inherit` above was pulling in that label's own
      0.85rem (~13.6px) instead of a sensible field size. iOS Safari

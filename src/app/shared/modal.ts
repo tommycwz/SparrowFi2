@@ -8,7 +8,7 @@ import { IconComponent } from './icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop">
-      <div class="panel" role="dialog" aria-modal="true" [attr.aria-label]="title()">
+      <div class="panel" [class.wide]="wide()" role="dialog" aria-modal="true" [attr.aria-label]="title()">
         <header>
           <h2>{{ title() }}</h2>
           @if (dismissible()) {
@@ -53,6 +53,12 @@ import { IconComponent } from './icon';
         margin-bottom: 4vh;
       }
     }
+    /* Opt-in wider panel for content that doesn't fit the default form-field
+       width - a grid/table, for instance - without changing the size of
+       every other modal in the app. */
+    .panel.wide {
+      width: min(960px, 96vw);
+    }
     header {
       display: flex;
       align-items: center;
@@ -95,5 +101,10 @@ import { IconComponent } from './icon';
 export class ModalComponent {
   readonly title = input('');
   readonly dismissible = input(true);
+  /** Opt-in wider panel (min(960px, 96vw) instead of the default
+   * min(480px, 100%)) - for content like a spreadsheet-style grid that
+   * needs real horizontal room. Every existing usage is unaffected unless
+   * it explicitly passes `[wide]="true"`. */
+  readonly wide = input(false);
   @Output() close = new EventEmitter<void>();
 }

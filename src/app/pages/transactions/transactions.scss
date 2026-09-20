@@ -429,6 +429,116 @@
   overflow-y: auto;
 }
 
+/* ----- Batch entry modal --------------------------------------------------- */
+// A dense, spreadsheet-style grid rather than the app's usual stacked
+// <label> fields - each `.batch-row` is its own mini CSS grid sharing one
+// column template with `.batch-head`, so header labels and cell values
+// always line up regardless of how many rows are open.
+
+.batch-hint {
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.batch-grid-wrap {
+  overflow-x: auto;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+.batch-grid {
+  display: flex;
+  flex-direction: column;
+  min-width: 780px;
+  // Shared by every `.batch-row` (including `.batch-head`) below, so the
+  // header labels and every row's cells always line up under one another
+  // regardless of how many rows are open. min-width keeps every column
+  // readable rather than being squeezed to nothing on a narrow viewport;
+  // `.batch-grid-wrap` scrolls horizontally instead, same trade-off
+  // `.investment-chart` makes elsewhere in the app.
+  --batch-cols: minmax(120px, 130px) minmax(90px, 100px) minmax(90px, 110px) minmax(110px, 140px) minmax(
+      110px,
+      140px
+    ) minmax(90px, 110px) minmax(120px, 1fr) 28px;
+}
+
+.batch-row {
+  display: grid;
+  grid-template-columns: var(--batch-cols);
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.35rem 0;
+}
+
+.batch-row:not(.batch-head):not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.batch-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+// Deliberately smaller/denser than the app's default form-field styling
+// (which pads to a 16px font specifically to dodge iOS Safari's
+// auto-zoom-on-focus) - this grid is squarely a desktop, keyboard/paste
+// driven workflow, and eight full-size fields per row would make it
+// unusable rather than "like Excel". A phone can still use it; it just
+// won't get the same anti-zoom guarantee the rest of the app's forms do.
+.batch-row input,
+.batch-row select {
+  padding: 0.35rem 0.4rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+
+.batch-row input:disabled {
+  color: var(--text-muted);
+  text-align: center;
+  background: transparent;
+  border-color: transparent;
+}
+
+.batch-row-error input,
+.batch-row-error select {
+  border-color: var(--danger);
+}
+
+.batch-row-error-msg {
+  font-size: 0.72rem;
+  color: var(--danger);
+  padding: 0.1rem 0 0.4rem;
+}
+
+.btn-add-row {
+  margin-top: 0.75rem;
+}
+
+.batch-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.batch-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.small {
+  font-size: 0.78rem;
+}
+
 /* ----- Small screens ----------------------------------------------------- */
 
 @media (max-width: 480px) {

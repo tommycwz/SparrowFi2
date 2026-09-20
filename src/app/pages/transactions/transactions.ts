@@ -34,6 +34,61 @@ function blankForm(): TxForm {
   };
 }
 
+/** One editable row in the Batch grid - the same fields `TxForm` carries
+ * minus `time`/`autoCaptureTime` (a bulk-entry grid is for rapidly getting
+ * many rows in, where the exact time of day rarely matters - every row
+ * saves with no time, same as leaving auto-capture off and Time blank on
+ * the single Add form). Every field is a plain string (matching how HTML
+ * form controls hand values back), parsed/validated only at save time. */
+interface BatchRow {
+  date: string;
+  type: TransactionType;
+  accountType: AccountType;
+  accountId: string;
+  categoryId: string;
+  amount: string;
+  notes: string;
+}
+
+function blankBatchRow(): BatchRow {
+  return { date: '', type: 'expense', accountType: 'bank', accountId: '', categoryId: '', amount: '', notes: '' };
+}
+
+/** How many blank rows the Batch grid opens with - enough to look like a
+ * small spreadsheet ready to fill in, without being an intimidating wall
+ * of empty rows. "+ Add Row" covers anyone who needs more. */
+const BATCH_INITIAL_ROWS = 8;
+
+/** Column order the grid presents fields in, left to right - also the
+ * order a multi-cell Excel/Sheets paste is fanned out across when it
+ * starts partway through a row (e.g. pasting from the Type column still
+ * lands Account Type/Account/Category/Amount/Notes in the right places). */
+const BATCH_FIELDS: (keyof BatchRow)[] = [
+  'date',
+  'type',
+  'accountType',
+  'accountId',
+  'categoryId',
+  'amount',
+  'notes',
+];
+
+/** A row that's simply never been touched yet - both Date and Amount are
+ * still blank. Used to skip trailing empty rows silently instead of
+ * flagging every one of them as an error just for existing. Type/Account
+ * Type default away from "" (so their <select>s always show something),
+ * so they're deliberately not part of this check. */
+function isBlankBatchRow(row: BatchRow): boolean {
+  return row.date.trim() === '' && row.amount.trim() === '';
+}
+
+interface BatchRowResult {
+  row: BatchRow;
+  blank: boolean;
+  error?: string;
+  payload?: Omit<Transaction, 'id'>;
+}
+
 /** Minimum horizontal drag (px) before a touch gesture counts as a swipe. */
 const SWIPE_THRESHOLD = 45;
 
@@ -163,6 +218,11 @@ export class TransactionsPage {
   readonly showImportModal = signal(false);
   readonly importPreview = signal<ImportPreview | null>(null);
 
+  readonly showBatchModal = signal(false);
+  readonly batchRows = signal<BatchRow[]>([]);
+  readonly accountTypeLabels = ACCOUNT_TYPE_LABELS;
+  readonly batchFields = BATCH_FIELDS;
+
   readonly typeLabels = TYPE_LABELS;
   readonly typeOptions: TransactionType[] = ['income', 'expense', 'commitment', 'others-in', 'others-out'];
 
@@ -177,10 +237,16 @@ export class TransactionsPage {
     return (this.state.state()?.categories ?? []).filter((c) => c.type === type);
   });
 
-  readonly accountOptions = computed(() => {
+  readonly accountOptions = computed(() => this.accountOptionsForType(this.form().accountType));
+
+  /** Same lookup as `accountOptions`, but for an arbitrary `accountType`
+   * rather than always the single Add form's own - the Batch grid needs
+   * one independent lookup per row, since each row picks its own account
+   * type. */
+  accountOptionsForType(accountType: AccountType): { id: string; name: string; color?: string }[] {
     const s = this.state.state();
-    if (!s) return [] as { id: string; name: string; color?: string }[];
-    switch (this.form().accountType) {
+    if (!s) return [];
+    switch (accountType) {
       case 'bank':
         return s.banks;
       case 'wallet':
@@ -190,7 +256,13 @@ export class TransactionsPage {
       default:
         return [];
     }
-  });
+  }
+
+  /** Same lookup as `categoriesForType`, but for an arbitrary `type`
+   * rather than always the single Add form's own - one per Batch row. */
+  categoriesForRowType(type: TransactionType): { id: string; name: string; color: string }[] {
+    return (this.state.state()?.categories ?? []).filter((c) => c.type === type);
+  }
 
   /** Categories for the filter dropdown, grouped by type for an <optgroup> layout. */
   readonly categoryFilterGroups = computed(() => {
@@ -434,6 +506,182 @@ export class TransactionsPage {
   remove(id: string): void {
     if (confirm('Delete this transaction?')) {
       this.state.removeTransaction(id);
+    }
+  }
+
+  // ----- Batch entry ------------------------------------------------------
+  // An Excel-style grid for keying in many transactions in one sitting,
+  // rather than opening the single Add form over and over. Every row is
+  // validated the same way `save()` validates the single form (a date and
+  // a positive amount are the only hard requirements), and pasting a
+  // multi-cell range copied from an actual spreadsheet fans it out across
+  // rows/columns starting at whichever cell it lands on.
+
+  openBatch(): void {
+    this.batchRows.set(Array.from({ length: BATCH_INITIAL_ROWS }, blankBatchRow));
+    this.showBatchModal.set(true);
+  }
+
+  cancelBatch(): void {
+    this.showBatchModal.set(false);
+    this.batchRows.set([]);
+  }
+
+  addBatchRow(): void {
+    this.batchRows.update((rows) => [...rows, blankBatchRow()]);
+  }
+
+  removeBatchRow(index: number): void {
+    this.batchRows.update((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  /** Generic single-cell edit, for every field except Type/Account Type
+   * (which also need to reset a dependent field - see
+   * `onBatchTypeChange`/`onBatchAccountTypeChange` below). */
+  updateBatchCell(index: number, field: keyof BatchRow, value: string): void {
+    this.batchRows.update((rows) =>
+      rows.map((r, i) => (i === index ? { ...r, [field]: value } : r)),
+    );
+  }
+
+  /** Changing a row's Type also clears its Category, same as the single
+   * Add form's `onTypeChange` - the previous selection belonged to the old
+   * type's category list and would otherwise silently point at the wrong
+   * kind of category. */
+  onBatchTypeChange(index: number, type: TransactionType): void {
+    this.batchRows.update((rows) =>
+      rows.map((r, i) => (i === index ? { ...r, type, categoryId: '' } : r)),
+    );
+  }
+
+  /** Same idea as `onBatchTypeChange`, for Account Type -> Account. */
+  onBatchAccountTypeChange(index: number, accountType: AccountType): void {
+    this.batchRows.update((rows) =>
+      rows.map((r, i) => (i === index ? { ...r, accountType, accountId: '' } : r)),
+    );
+  }
+
+  /** Every row's validation result, in grid order - `blank` rows (never
+   * touched) are silently skippable, a row with content but a problem
+   * carries an `error`, and everything else carries the `payload` ready to
+   * hand to `state.addTransactions`. Mirrors the single Add form's own
+   * `save()` validation (a date and a positive amount are the only hard
+   * requirements) rather than inventing stricter rules just because this
+   * is a grid. */
+  readonly batchResults = computed<BatchRowResult[]>(() =>
+    this.batchRows().map((row) => {
+      if (isBlankBatchRow(row)) return { row, blank: true };
+      if (!row.date.trim()) return { row, blank: false, error: 'Date is required.' };
+      const amount = parseFloat(row.amount);
+      if (isNaN(amount) || amount <= 0) return { row, blank: false, error: 'Amount must be a positive number.' };
+      const payload: Omit<Transaction, 'id'> = {
+        date: row.date,
+        amount,
+        type: row.type,
+        accountType: row.accountType,
+        accountId:
+          row.accountType === 'cash' || row.accountType === 'others' ? undefined : row.accountId || undefined,
+        categoryId: row.categoryId || undefined,
+        notes: row.notes.trim() || undefined,
+      };
+      return { row, blank: false, payload };
+    }),
+  );
+
+  readonly batchValidCount = computed(
+    () => this.batchResults().filter((r) => !r.blank && !r.error).length,
+  );
+  readonly batchErrorCount = computed(() => this.batchResults().filter((r) => r.error).length);
+  readonly batchCanSave = computed(() => this.batchValidCount() > 0 && this.batchErrorCount() === 0);
+
+  saveBatch(): void {
+    if (!this.batchCanSave()) return;
+    const payloads = this.batchResults()
+      .map((r) => r.payload)
+      .filter((p): p is Omit<Transaction, 'id'> => !!p);
+    this.state.addTransactions(payloads);
+    this.cancelBatch();
+  }
+
+  /** Detects a genuine multi-cell paste (more than one row, or more than
+   * one tab-separated column on a single line) - copied straight out of
+   * Excel/Google Sheets, that format is tab-between-columns,
+   * newline-between-rows. A single pasted value (no tabs, one line) is
+   * left alone entirely so the browser's own normal single-value paste
+   * still happens on that cell. */
+  onBatchPaste(event: ClipboardEvent, rowIndex: number, field: keyof BatchRow): void {
+    const text = event.clipboardData?.getData('text') ?? '';
+    if (!text) return;
+    const lines = text.replace(/\r/g, '').split('\n');
+    // A trailing blank line is just the newline after the last real row of
+    // a copied range, not a genuine empty row to paste.
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    const isMultiCell = lines.length > 1 || lines[0].includes('\t');
+    if (!isMultiCell) return;
+
+    event.preventDefault();
+    const startCol = BATCH_FIELDS.indexOf(field);
+
+    this.batchRows.update((rows) => {
+      const next = [...rows];
+      while (next.length < rowIndex + lines.length) next.push(blankBatchRow());
+
+      lines.forEach((line, r) => {
+        const cells = line.split('\t');
+        let target = { ...next[rowIndex + r] };
+        cells.forEach((raw, c) => {
+          const col = startCol + c;
+          if (col >= BATCH_FIELDS.length) return; // extra columns past Notes are ignored
+          target = this.applyBatchPasteCell(target, BATCH_FIELDS[col], raw.trim());
+        });
+        next[rowIndex + r] = target;
+      });
+
+      return next;
+    });
+  }
+
+  /** Resolves one pasted cell's raw text into a `BatchRow` field.
+   * Type/Account Type match against their display labels the same way CSV
+   * Import matches them (case-insensitive); Account/Category match by name
+   * *within the row's own (possibly just-pasted) Type/Account Type*, since
+   * a pasted row's columns are read left to right in `BATCH_FIELDS` order
+   * and Type/Account Type always precede the fields that depend on them.
+   * An unrecognized value is left as whatever the row already had, rather
+   * than clearing it or blocking the rest of the paste - the user can
+   * always fix one cell by hand afterward. */
+  private applyBatchPasteCell(row: BatchRow, field: keyof BatchRow, raw: string): BatchRow {
+    switch (field) {
+      case 'date':
+        return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? { ...row, date: raw } : row;
+      case 'type': {
+        const type = TYPE_LABELS_REVERSE.get(raw.toLowerCase());
+        return type ? { ...row, type, categoryId: '' } : row;
+      }
+      case 'accountType': {
+        const accountType = ACCOUNT_TYPE_LABELS_REVERSE.get(raw.toLowerCase());
+        return accountType ? { ...row, accountType, accountId: '' } : row;
+      }
+      case 'accountId': {
+        if (!raw) return row;
+        const match = this.accountOptionsForType(row.accountType).find(
+          (a) => a.name.toLowerCase() === raw.toLowerCase(),
+        );
+        return match ? { ...row, accountId: match.id } : row;
+      }
+      case 'categoryId': {
+        if (!raw) return row;
+        const match = this.categoriesForRowType(row.type).find((c) => c.name.toLowerCase() === raw.toLowerCase());
+        return match ? { ...row, categoryId: match.id } : row;
+      }
+      case 'amount': {
+        const amount = parseFloat(raw.replace(/,/g, ''));
+        return isNaN(amount) ? row : { ...row, amount: String(amount) };
+      }
+      case 'notes':
+        return { ...row, notes: raw };
+      default:
+        return row;
     }
   }
 

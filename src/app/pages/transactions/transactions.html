@@ -12,6 +12,9 @@
         class="visually-hidden"
         (change)="onImportFileSelected($event)"
       />
+      <button type="button" class="btn btn-secondary" (click)="openBatch()">
+        <sf-icon name="layers" [size]="16" /> Batch
+      </button>
       <button type="button" class="btn btn-secondary" (click)="importInput.click()">
         <sf-icon name="upload" [size]="16" /> Import
       </button>
@@ -322,5 +325,132 @@
         <button type="button" class="btn btn-secondary btn-block" (click)="cancelImport()">Cancel</button>
       </div>
     }
+  </sf-modal>
+}
+
+@if (showBatchModal()) {
+  <sf-modal title="Batch Add Transactions" [wide]="true" (close)="cancelBatch()">
+    <p class="muted batch-hint">
+      Fill in rows like a spreadsheet, or copy a range from Excel/Google Sheets and paste it into any cell — it'll fill
+      across and down from there. A row is left out entirely until it has at least a Date and an Amount.
+    </p>
+
+    <div class="batch-grid-wrap">
+      <div class="batch-grid">
+        <div class="batch-row batch-head">
+          <span>Date</span>
+          <span>Type</span>
+          <span>Account Type</span>
+          <span>Account</span>
+          <span>Category</span>
+          <span>Amount</span>
+          <span>Notes</span>
+          <span></span>
+        </div>
+
+        @for (row of batchRows(); track $index; let i = $index) {
+          <div class="batch-row" [class.batch-row-error]="batchResults()[i].error">
+            <input
+              type="date"
+              [ngModel]="row.date"
+              (ngModelChange)="updateBatchCell(i, 'date', $event)"
+              (paste)="onBatchPaste($event, i, 'date')"
+            />
+
+            <select
+              [ngModel]="row.type"
+              (ngModelChange)="onBatchTypeChange(i, $event)"
+              (paste)="onBatchPaste($event, i, 'type')"
+            >
+              @for (t of typeOptions; track t) {
+                <option [value]="t">{{ typeLabels[t] }}</option>
+              }
+            </select>
+
+            <select
+              [ngModel]="row.accountType"
+              (ngModelChange)="onBatchAccountTypeChange(i, $event)"
+              (paste)="onBatchPaste($event, i, 'accountType')"
+            >
+              <option value="bank">Bank</option>
+              <option value="wallet">Wallet</option>
+              <option value="card">Card</option>
+              <option value="cash">Cash</option>
+              <option value="others">Others</option>
+            </select>
+
+            @if (accountOptionsForType(row.accountType).length > 0) {
+              <select
+                [ngModel]="row.accountId"
+                (ngModelChange)="updateBatchCell(i, 'accountId', $event)"
+                (paste)="onBatchPaste($event, i, 'accountId')"
+              >
+                <option value="">—</option>
+                @for (a of accountOptionsForType(row.accountType); track a.id) {
+                  <option [value]="a.id">{{ a.name }}</option>
+                }
+              </select>
+            } @else {
+              <input type="text" value="—" disabled (paste)="onBatchPaste($event, i, 'accountId')" />
+            }
+
+            <select
+              [ngModel]="row.categoryId"
+              (ngModelChange)="updateBatchCell(i, 'categoryId', $event)"
+              (paste)="onBatchPaste($event, i, 'categoryId')"
+            >
+              <option value="">Uncategorized</option>
+              @for (c of categoriesForRowType(row.type); track c.id) {
+                <option [value]="c.id">{{ c.name }}</option>
+              }
+            </select>
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              [ngModel]="row.amount"
+              (ngModelChange)="updateBatchCell(i, 'amount', $event)"
+              (paste)="onBatchPaste($event, i, 'amount')"
+            />
+
+            <input
+              type="text"
+              placeholder="Optional"
+              [ngModel]="row.notes"
+              (ngModelChange)="updateBatchCell(i, 'notes', $event)"
+              (paste)="onBatchPaste($event, i, 'notes')"
+            />
+
+            <button type="button" class="icon-btn del-btn" (click)="removeBatchRow(i)" aria-label="Remove row">
+              <sf-icon name="trash" [size]="14" />
+            </button>
+          </div>
+          @if (batchResults()[i].error; as err) {
+            <div class="batch-row-error-msg">Row {{ i + 1 }}: {{ err }}</div>
+          }
+        }
+      </div>
+    </div>
+
+    <button type="button" class="btn btn-secondary btn-add-row" (click)="addBatchRow()">
+      <sf-icon name="plus" [size]="14" /> Add Row
+    </button>
+
+    <div class="batch-footer">
+      <span class="muted small">
+        {{ batchValidCount() }} row{{ batchValidCount() === 1 ? '' : 's' }} ready to save
+        @if (batchErrorCount() > 0) {
+          · {{ batchErrorCount() }} need{{ batchErrorCount() === 1 ? 's' : '' }} fixing
+        }
+      </span>
+      <div class="batch-footer-actions">
+        <button type="button" class="btn btn-secondary" (click)="cancelBatch()">Cancel</button>
+        <button type="button" class="btn btn-primary" [disabled]="!batchCanSave()" (click)="saveBatch()">
+          Save {{ batchValidCount() }} Transaction{{ batchValidCount() === 1 ? '' : 's' }}
+        </button>
+      </div>
+    </div>
   </sf-modal>
 }
