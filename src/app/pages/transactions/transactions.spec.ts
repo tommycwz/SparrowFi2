@@ -374,4 +374,3 @@ describe('TransactionsPage', () => {
     });
   });
 });
-</content>
