@@ -194,35 +194,60 @@ export const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   yearly: 'Yearly',
 };
 
-/** A template for a transaction that repeats on a schedule - a subscription,
- * rent, a recurring paycheck, and so on. Deliberately does NOT auto-create
- * transactions on its own (there's no background scheduler in a client-only
- * PWA with no server component): the user reviews the Recurring page and
- * taps a specific item, or "Add All", when they want it actually booked -
- * see `StateService.triggerRecurring`/`triggerAllRecurring`, which stamp a
- * real `Transaction` dated `nextDate` and then advance `nextDate` to the
- * following occurrence (`nextOccurrenceDate`) so the template is ready for
- * next time without a manual date edit. `nextDate` can be moved to any date
- * at all (not just the day it was created on), so an existing bill on any
- * schedule can be entered as-is rather than forced onto today's date. */
+/** One transaction a `RecurringTransaction` template books every time it's
+ * triggered. Most templates have exactly one (a simple bill or subscription),
+ * but a template can carry several - e.g. a paycheck that credits one bank
+ * *and*, in the same breath, moves fixed amounts out to other accounts as
+ * savings/bills - so triggering the template once produces one transaction
+ * per line, all dated the same `nextDate`. */
+export interface RecurringLine {
+  id: string;
+  amount: number;
+  type: TransactionType;
+  accountType: AccountType;
+  accountId?: string;
+  categoryId?: string;
+}
+
+/** A template for one or more transactions that repeat together on a
+ * schedule - a subscription, rent, or a paycheck that's simultaneously
+ * split into savings/bills across several accounts (see `RecurringLine`).
+ * Deliberately does NOT auto-create transactions on its own (there's no
+ * background scheduler in a client-only PWA with no server component): the
+ * user reviews the Recurring page and taps a specific item, or "Add All",
+ * when they want it actually booked - see
+ * `StateService.triggerRecurring`/`triggerAllRecurring`, which stamp one
+ * real `Transaction` per line, all dated `nextDate`, and then advance
+ * `nextDate` to the following occurrence (`nextOccurrenceDate`) so the
+ * template is ready for next time without a manual date edit. `nextDate`
+ * can be moved to any date at all (not just the day it was created on), so
+ * an existing bill on any schedule can be entered as-is rather than forced
+ * onto today's date. */
 export interface RecurringTransaction {
   id: string;
   /** Short label for the list - "Netflix", "Rent", "Salary" - independent
    * of category naming, since two different recurring items can share a
    * category. */
   name: string;
-  amount: number;
-  type: TransactionType;
-  accountType: AccountType;
-  accountId?: string;
-  categoryId?: string;
+  /** Always at least one line - see `RecurringLine`. */
+  lines: RecurringLine[];
   frequency: RecurringFrequency;
-  /** The date this item is next due, and what gets stamped on the
+  /** The date this item is next due, and what gets stamped on every
    * transaction it creates when triggered - freely editable to any date,
    * not limited to "today" or a fixed day-of-month. */
   nextDate: string;
-  /** Freeform notes, copied onto every transaction this template creates. */
+  /** Freeform notes for the template as a whole, copied onto every
+   * transaction every one of its lines creates. */
   notes?: string;
+  /** When true, `StateService.triggerAllRecurring` ("Add All to
+   * Transactions") skips booking this item's lines - but still advances
+   * its `nextDate` to the following occurrence, same as an unpaused item,
+   * so a paused subscription/bill doesn't quietly build up a backlog of
+   * missed dates while it's off. Doesn't affect triggering this item
+   * individually, which always books it regardless of this flag - pausing
+   * only changes what "Add All" does with it. Absent/false means not
+   * paused. */
+  paused?: boolean;
 }
 
 export interface AppState {

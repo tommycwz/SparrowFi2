@@ -8,6 +8,7 @@ import {
   Currency,
   FixedDeposit,
   Investment,
+  RecurringLine,
   RecurringTransaction,
   Wallet,
   createEmptyState,
@@ -191,18 +192,34 @@ function normalizeFixedDeposit(fd: any): FixedDeposit {
   };
 }
 
+function normalizeRecurringLine(l: any): RecurringLine {
+  return {
+    id: l.id ?? generateId(),
+    amount: typeof l.amount === 'number' ? l.amount : 0,
+    type: l.type ?? 'expense',
+    accountType: l.accountType ?? 'bank',
+    accountId: l.accountId,
+    categoryId: l.categoryId,
+  };
+}
+
+/** A pre-multi-line recurring item (saved before `RecurringTransaction`
+ * gained `lines[]`) carried its one and only line's fields directly on the
+ * template itself - `amount`/`type`/`accountType`/`accountId`/`categoryId`.
+ * That whole template becomes one line here, so a legacy file keeps
+ * behaving exactly as it did before. */
 function normalizeRecurring(r: any): RecurringTransaction {
+  const lines: RecurringLine[] = Array.isArray(r.lines)
+    ? r.lines.map(normalizeRecurringLine)
+    : [normalizeRecurringLine(r)];
   return {
     id: r.id ?? generateId(),
     name: r.name ?? 'Recurring',
-    amount: typeof r.amount === 'number' ? r.amount : 0,
-    type: r.type ?? 'expense',
-    accountType: r.accountType ?? 'bank',
-    accountId: r.accountId,
-    categoryId: r.categoryId,
+    lines: lines.length > 0 ? lines : [normalizeRecurringLine({})],
     frequency: r.frequency ?? 'monthly',
     nextDate: r.nextDate ?? new Date().toISOString().slice(0, 10),
     notes: r.notes,
+    paused: r.paused === true,
   };
 }
 

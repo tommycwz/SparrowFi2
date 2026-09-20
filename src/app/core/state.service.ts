@@ -6,6 +6,7 @@ import {
   Category,
   FixedDeposit,
   Investment,
+  RecurringLine,
   RecurringTransaction,
   Transaction,
   Wallet,
@@ -934,17 +935,41 @@ export class StateService {
   // a real, ordinary transaction (see `RecurringTransaction`'s doc comment
   // for why there's no background scheduler doing this automatically).
 
-  addRecurring(r: Omit<RecurringTransaction, 'id'>): void {
+  /** `r.lines` come in without ids (the caller - the Recurring page's form
+   * - doesn't assign them) - ids are generated here, same as the
+   * template's own id, keeping id generation inside `StateService` rather
+   * than scattered across page components. */
+  addRecurring(r: Omit<RecurringTransaction, 'id' | 'lines'> & { lines: Omit<RecurringLine, 'id'>[] }): void {
     this.updateState((s) => ({
       ...s,
-      recurringTransactions: [...s.recurringTransactions, { ...r, id: generateId() }],
+      recurringTransactions: [
+        ...s.recurringTransactions,
+        { ...r, id: generateId(), lines: r.lines.map((line) => ({ ...line, id: generateId() })) },
+      ],
     }));
   }
 
-  updateRecurring(id: string, patch: Partial<Omit<RecurringTransaction, 'id'>>): void {
+  /** `patch.lines`, if given, *replaces* the template's whole line set
+   * (the Recurring page's Add/Edit form always saves the complete list
+   * rather than patching individual lines) - fresh ids are generated for
+   * it the same way `addRecurring` does. Omitting `lines` from `patch`
+   * leaves the existing lines untouched. */
+  updateRecurring(
+    id: string,
+    patch: Partial<Omit<RecurringTransaction, 'id' | 'lines'>> & { lines?: Omit<RecurringLine, 'id'>[] },
+  ): void {
     this.updateState((s) => ({
       ...s,
-      recurringTransactions: s.recurringTransactions.map((r) => (r.id === id ? { ...r, ...patch, id } : r)),
+      recurringTransactions: s.recurringTransactions.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              ...patch,
+              id,
+              lines: patch.lines ? patch.lines.map((line) => ({ ...line, id: generateId() })) : r.lines,
+            }
+          : r,
+      ),
     }));
   }
 
@@ -958,32 +983,33 @@ export class StateService {
     }));
   }
 
-  /** Books one recurring item as a real transaction dated on its current
-   * `nextDate` (carrying its amount/type/account/category/notes - notes
-   * are prefixed with the recurring item's own name so the generated
-   * transaction is traceable back to it at a glance), then advances
-   * `nextDate` to the following occurrence per `frequency` - so triggering
-   * it again later picks up right where this one left off instead of
-   * needing a manual date edit every time. Silently no-ops if the id no
-   * longer exists (e.g. a stale reference from a closed tab). */
+  /** Flips `paused` on one recurring item - see `RecurringTransaction.paused`
+   * for what pausing actually changes (only `triggerAllRecurring`'s
+   * behavior; triggering it individually is unaffected). */
+  togglePauseRecurring(id: string): void {
+    this.updateState((s) => ({
+      ...s,
+      recurringTransactions: s.recurringTransactions.map((r) =>
+        r.id === id ? { ...r, paused: !r.paused } : r,
+      ),
+    }));
+  }
+
+  /** Books one recurring item as real transactions dated on its current
+   * `nextDate` - one transaction per line (see `RecurringLine`; most
+   * templates have exactly one, but a paycheck-style template can carry
+   * several, all booked together) - then advances `nextDate` to the
+   * following occurrence per `frequency` - so triggering it again later
+   * picks up right where this one left off instead of needing a manual
+   * date edit every time. Silently no-ops if the id no longer exists (e.g.
+   * a stale reference from a closed tab). */
   triggerRecurring(id: string): void {
     this.updateState((s) => {
       const r = s.recurringTransactions.find((x) => x.id === id);
       if (!r) return s;
-      const transaction: Transaction = {
-        id: generateId(),
-        date: r.nextDate,
-        amount: r.amount,
-        type: r.type,
-        accountType: r.accountType,
-        accountId: r.accountId,
-        categoryId: r.categoryId,
-        notes: this.recurringNotes(r),
-        recurringId: id,
-      };
       return {
         ...s,
-        transactions: [...s.transactions, transaction],
+        transactions: [...s.transactions, ...this.recurringLineTransactions(r, r.nextDate)],
         recurringTransactions: s.recurringTransactions.map((x) =>
           x.id === id ? { ...x, nextDate: nextOccurrenceDate(x.nextDate, x.frequency) } : x,
         ),
@@ -993,21 +1019,19 @@ export class StateService {
 
   /** Same as `triggerRecurring`, but for every recurring item at once - the
    * Recurring page's "Add All to Transactions" action - as a single state
-   * update rather than one signal write per item. */
+   * update rather than one signal write per item. A `paused` item is
+   * skipped here (none of its lines are booked), but its `nextDate` still
+   * advances to the following occurrence exactly like an unpaused one - so
+   * pausing something doesn't leave it stuck on a stale date, or silently
+   * dump a backlog of skipped occurrences onto it the moment it's
+   * unpaused. Pausing has no effect on triggering that item individually
+   * (`triggerRecurring`), only on this bulk action. */
   triggerAllRecurring(): void {
     this.updateState((s) => {
       if (s.recurringTransactions.length === 0) return s;
-      const newTransactions: Transaction[] = s.recurringTransactions.map((r) => ({
-        id: generateId(),
-        date: r.nextDate,
-        amount: r.amount,
-        type: r.type,
-        accountType: r.accountType,
-        accountId: r.accountId,
-        categoryId: r.categoryId,
-        notes: this.recurringNotes(r),
-        recurringId: r.id,
-      }));
+      const newTransactions: Transaction[] = s.recurringTransactions
+        .filter((r) => !r.paused)
+        .flatMap((r) => this.recurringLineTransactions(r, r.nextDate));
       return {
         ...s,
         transactions: [...s.transactions, ...newTransactions],
@@ -1019,11 +1043,33 @@ export class StateService {
     });
   }
 
-  /** Builds the `notes` for a transaction generated from a recurring
-   * template: leads with the recurring item's own name (its "title") so
-   * the generated transaction reads like the app's other auto-generated
-   * notes (e.g. `Fixed Deposit - <bank>`, `Investment - <name>`), then
-   * appends any notes typed on the template itself, if present. */
+  /** One real `Transaction` per line of `r`, all dated `date` and all
+   * carrying `recurringId: r.id` - the shared building block behind
+   * `triggerRecurring`/`triggerAllRecurring`, so "book this template's
+   * lines on this date" is defined exactly once. */
+  private recurringLineTransactions(r: RecurringTransaction, date: string): Transaction[] {
+    const notes = this.recurringNotes(r);
+    return r.lines.map((line) => ({
+      id: generateId(),
+      date,
+      amount: line.amount,
+      type: line.type,
+      accountType: line.accountType,
+      accountId: line.accountId,
+      categoryId: line.categoryId,
+      notes,
+      recurringId: r.id,
+    }));
+  }
+
+  /** Builds the `notes` shared by every transaction a recurring template's
+   * lines create together: leads with the recurring item's own name (its
+   * "title") so the generated transactions read like the app's other
+   * auto-generated notes (e.g. `Fixed Deposit - <bank>`, `Investment -
+   * <name>`), then appends any notes typed on the template itself, if
+   * present. All lines from the same trigger share this text - their
+   * account/category/amount are what tell them apart in the Transactions
+   * list, and they all carry the same `recurringId` besides. */
   private recurringNotes(r: RecurringTransaction): string {
     return r.notes ? `${r.name} - ${r.notes}` : r.name;
   }

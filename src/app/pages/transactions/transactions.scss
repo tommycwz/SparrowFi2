@@ -542,16 +542,44 @@
 /* ----- Small screens ----------------------------------------------------- */
 
 @media (max-width: 480px) {
-  .stat-value {
-    font-size: 0.85rem;
+  /* Four stats crammed into one row ran out of width for real currency
+     values on narrow phones - a figure like "-RM2,50X.XX" got ellipsis-
+     clipped mid-number even after shrinking the font, which is the one
+     thing a money figure must never do. Wrapping to a 2x2 grid instead
+     roughly doubles the width each value gets, which is what actually
+     fixes it rather than just delaying it at a smaller font size. Same
+     fix as the Dashboard page's own `.stats-bar`. */
+  .stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 0.7rem;
   }
 
-  .stat-label {
-    font-size: 0.62rem;
+  .stats-bar .stat-value {
+    font-size: 0.95rem;
   }
 
-  .stat {
+  .stats-bar .stat-label {
+    font-size: 0.65rem;
+  }
+
+  .stats-bar .stat {
     padding: 0.3rem 0.35rem;
+  }
+
+  /* The base rule (below) draws a divider after every stat but the last -
+     right at home in a single row of four, but in a 2x2 grid that also
+     puts one after the top-right stat (nothing to its right) and after
+     the bottom-left one (nothing coherent to divide there once wrapped).
+     Restrict it to the left stat of each row instead. The extra
+     `.stats-bar` ancestor here makes this more specific than the base
+     `.stat:not(:last-child)::after` rule, so it wins regardless of which
+     one is declared first in the file. */
+  .stats-bar .stat:not(:last-child)::after {
+    display: none;
+  }
+
+  .stats-bar .stat:nth-child(odd):not(:last-child)::after {
+    display: block;
   }
 
   .head-actions {

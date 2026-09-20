@@ -167,6 +167,12 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
           <path d="M17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
           <path d="M7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
         }
+        @case ('pause') {
+          <rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" />
+        }
+        @case ('play') {
+          <path d="M5 3v18l15-9Z" />
+        }
       }
     </svg>
   `,

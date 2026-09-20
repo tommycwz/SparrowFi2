@@ -59,43 +59,48 @@
     </div>
   </section>
 
-  <div class="card stats-bar">
-    <div class="stat">
-      <div class="stat-label muted"
-        >Monthly Income<sf-info-tip
-          label="Monthly Income"
-          text="Everything recorded as Income this calendar month. Transfers, investment principal returns and other internal movements aren't counted here."
-      /></div>
-      <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(monthlyStats().income) }}</div>
+  <section>
+    <div class="section-head">
+      <h2>Monthly</h2>
     </div>
-    <div class="stat">
-      <div class="stat-label muted"
-        >Monthly Expense<sf-info-tip
-          label="Monthly Expense"
-          text="Variable spending recorded as Expense this month — everyday purchases, not fixed commitments."
-      /></div>
-      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label muted"
-        >Monthly Commitment<sf-info-tip
-          label="Monthly Commitment"
-          text="Fixed, recurring obligations this month — rent, loan instalments, insurance, subscriptions. Kept apart from Expense so locked-in spend never hides inside discretionary spend."
-      /></div>
-      <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().commitment) }}</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label muted"
-        >Net This Month<sf-info-tip
-          label="Net This Month"
-          text="Income minus Expense minus Commitment for the current month. Transfers, adjustments and Fixed Deposit/Investment principal moving in or out aren't included."
-          align="end"
-      /></div>
-      <div class="stat-value" [class.positive]="monthlyStats().net >= 0" [class.negative]="monthlyStats().net < 0">
-        {{ netStatLabel() }}
+    <div class="card stats-bar">
+      <div class="stat">
+        <div class="stat-label muted"
+          >Income<sf-info-tip
+            label="Monthly Income"
+            text="Everything recorded as Income this calendar month. Transfers, investment principal returns and other internal movements aren't counted here."
+        /></div>
+        <div class="stat-value positive">+{{ currencySymbol() }}{{ numberPart(monthlyStats().income) }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label muted"
+          >Expense<sf-info-tip
+            label="Monthly Expense"
+            text="Variable spending recorded as Expense this month — everyday purchases, not fixed commitments."
+        /></div>
+        <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().expense) }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label muted"
+          >Commitment<sf-info-tip
+            label="Monthly Commitment"
+            text="Fixed, recurring obligations this month — rent, loan instalments, insurance, subscriptions. Kept apart from Expense so locked-in spend never hides inside discretionary spend."
+        /></div>
+        <div class="stat-value negative">-{{ currencySymbol() }}{{ numberPart(monthlyStats().commitment) }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label muted"
+          >Net This Month<sf-info-tip
+            label="Net This Month"
+            text="Income minus Expense minus Commitment for the current month. Transfers, adjustments and Fixed Deposit/Investment principal moving in or out aren't included."
+            align="end"
+        /></div>
+        <div class="stat-value" [class.positive]="monthlyStats().net >= 0" [class.negative]="monthlyStats().net < 0">
+          {{ netStatLabel() }}
+        </div>
       </div>
     </div>
-  </div>
+  </section>
 
   <!-- ================= Zone 2: Short-Term Liquidity ================= -->
   <section>

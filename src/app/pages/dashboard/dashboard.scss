@@ -43,6 +43,25 @@
   flex-shrink: 0;
 }
 
+/* On a narrow phone, "Available Cash" and "Net Worth" don't fit side by
+   side, so `.hero-top`'s `flex-wrap: wrap` drops Net Worth onto its own
+   row - but `justify-content: space-between` with a single item on that
+   row pins it to the left, right-aligned text and all, which reads as a
+   stray, misaligned block rather than a second line of the same card.
+   Below this width we stack the two sections on purpose instead, both
+   flush left, so it reads as one deliberate two-row layout. */
+@media (max-width: 480px) {
+  .hero-top {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .hero-secondary {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
 .hero-secondary .muted {
   font-size: 0.78rem;
 }

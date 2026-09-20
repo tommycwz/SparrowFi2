@@ -63,6 +63,47 @@ describe('migrateState', () => {
     expect((result.fixedDeposits[0] as any).isMatured).toBeUndefined();
   });
 
+  it('wraps a pre-multi-line recurring item\'s own type/account/amount fields into a single line', () => {
+    const result = migrateState({
+      recurringTransactions: [
+        {
+          id: 'r1',
+          name: 'Netflix',
+          amount: 45,
+          type: 'expense',
+          accountType: 'cash',
+          frequency: 'monthly',
+          nextDate: '2026-01-01',
+        },
+      ],
+    });
+    const r = result.recurringTransactions.find((x) => x.id === 'r1')!;
+    expect(r.lines.length).toBe(1);
+    expect(r.lines[0]).toEqual(
+      expect.objectContaining({ amount: 45, type: 'expense', accountType: 'cash' }),
+    );
+  });
+
+  it('passes through a recurring item that already has multiple lines unchanged', () => {
+    const result = migrateState({
+      recurringTransactions: [
+        {
+          id: 'r1',
+          name: 'Salary',
+          frequency: 'monthly',
+          nextDate: '2026-01-01',
+          lines: [
+            { id: 'l1', amount: 5000, type: 'income', accountType: 'bank', accountId: 'b1' },
+            { id: 'l2', amount: 500, type: 'expense', accountType: 'bank', accountId: 'b2' },
+          ],
+        },
+      ],
+    });
+    const r = result.recurringTransactions.find((x) => x.id === 'r1')!;
+    expect(r.lines.length).toBe(2);
+    expect(r.lines.map((l) => l.id)).toEqual(['l1', 'l2']);
+  });
+
   it('returns a valid empty state for garbage input', () => {
     const result = migrateState(null);
     expect(result.banks).toEqual([]);

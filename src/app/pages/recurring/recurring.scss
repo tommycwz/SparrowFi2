@@ -59,17 +59,42 @@
   flex-shrink: 0;
 }
 
+/* Net effect of all of a template's lines together (see
+   `RecurringPage.netAmount`) - signed and colored the same way the
+   Transactions page's own amount rows are (`.sign`/`.cur`/`.num`), since a
+   template can now mix inflow and outflow lines and there's no single type
+   left to color a plain magnitude by. */
 .rec-amount {
   font-weight: 800;
   font-size: 1.05rem;
   white-space: nowrap;
 }
 
+.rec-amount .cur {
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin: 0 0.1rem;
+}
+
+.rec-amount.positive {
+  color: var(--success);
+}
+
+.rec-amount.negative {
+  color: var(--danger);
+}
+
 .rec-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 2rem;
+  flex-direction: column;
+  gap: 0.6rem;
   cursor: pointer;
+}
+
+.rec-next-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .rec-value {
@@ -80,10 +105,57 @@
 }
 
 .rec-chip-dot {
+  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  vertical-align: middle;
+  margin: 0 0.2rem;
+}
+
+/* ----- Lines (a template can book more than one transaction at once) --- */
+
+.rec-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+
+.rec-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rec-line-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-width: 1.1rem;
+}
+
+/* Plain text flow, not a flex row - `.rec-chip-dot` below is an
+   inline-block sitting inside this text rather than a flex item, so the
+   whole "Type · [dot] Account · Category" line wraps the normal way (word
+   by word) on a narrow phone. `display: flex` here used to turn each
+   phrase into its own flex item that couldn't reflow against the others,
+   which is what produced the broken, column-like wrapping on mobile. */
+.rec-line-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.rec-line-amount {
+  font-weight: 800;
+  font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .rec-notes {
@@ -101,10 +173,125 @@
   color: var(--danger);
 }
 
+.paused-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* Dims the card a touch so a glance down the list tells paused items apart
+   from active ones, without hiding anything or blocking its buttons -
+   Delete/Resume/Add to Transactions all stay fully usable. */
+.rec-card-paused {
+  opacity: 0.7;
+}
+
 .rec-actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+/* ----- Add/Edit modal: lines grid ----------------------------------------- */
+/* A template books one transaction per line (see `RecurringLine`) - most
+   have exactly one, but a paycheck-style template can carry several. A
+   dense, spreadsheet-style grid (rather than the app's usual stacked
+   <label> fields) lets several lines be keyed in - or pasted straight from
+   Excel/Google Sheets - at once. Same pattern as the Transactions page's
+   own Batch grid (`.batch-grid`/`.batch-row`): each `.rec-line-row` is its
+   own mini CSS grid sharing one column template with `.rec-line-head`, so
+   header labels and cell values always line up regardless of how many
+   lines are open. */
+
+.line-grid-hint {
+  margin-bottom: 0.25rem;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.icon-btn:hover {
+  background: var(--border);
+  color: var(--danger);
+}
+
+.rec-lines-grid-wrap {
+  overflow-x: auto;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+.rec-lines-grid {
+  display: flex;
+  flex-direction: column;
+  min-width: 620px;
+  // Shared by every `.rec-line-row` (including `.rec-line-head`) below, so
+  // the header labels and every line's cells always line up under one
+  // another regardless of how many lines are open. min-width keeps every
+  // column readable rather than being squeezed to nothing on a narrow
+  // viewport; `.rec-lines-grid-wrap` scrolls horizontally instead, same
+  // trade-off the Transactions page's Batch grid makes.
+  --rec-line-cols: minmax(100px, 120px) minmax(100px, 120px) minmax(110px, 140px) minmax(110px, 140px) minmax(
+      90px,
+      110px
+    ) 28px;
+}
+
+.rec-line-row {
+  display: grid;
+  grid-template-columns: var(--rec-line-cols);
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.35rem 0;
+}
+
+.rec-line-row:not(.rec-line-head):not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.rec-line-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+// Deliberately smaller/denser than the app's default form-field styling
+// (which pads to a 16px font specifically to dodge iOS Safari's
+// auto-zoom-on-focus) - this grid is squarely a desktop, keyboard/paste
+// driven workflow, same trade-off the Transactions page's Batch grid makes.
+.rec-line-row input,
+.rec-line-row select {
+  padding: 0.35rem 0.4rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+
+.rec-line-row input:disabled {
+  color: var(--text-muted);
+  text-align: center;
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-add-line {
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 /* ----- Add/Edit modal --------------------------------------------------- */
@@ -152,4 +339,23 @@
 
 .freq-tab:hover:not(.active) {
   border-color: var(--accent);
+}
+
+/* ----- Small screens ----------------------------------------------------- */
+
+@media (max-width: 480px) {
+  /* Three action buttons (Add to Transactions/Pause/Delete) no longer fit
+     one row on a narrow phone once icons and labels are accounted for -
+     `flex-wrap` alone just drops the odd one out onto its own line
+     (usually "Delete", stranded on the left with empty space beside it)
+     rather than actually fixing the layout. Stacking them full-width
+     instead reads as a deliberate list of actions rather than a row that
+     ran out of room. */
+  .rec-actions {
+    flex-direction: column;
+  }
+
+  .rec-actions .btn {
+    width: 100%;
+  }
 }

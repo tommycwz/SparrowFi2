@@ -913,3 +913,177 @@ describe('StateService account deletion guard', () => {
     expect(service.state()!.cards.length).toBe(0);
   });
 });
+
+describe('StateService recurring transactions - lines', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addBank({ name: 'Main Bank', color: '#22C55E', initialCapital: 0 });
+    service.addBank({ name: 'Savings', color: '#3B82F6', initialCapital: 0 });
+  });
+
+  function bankId(name: string): string {
+    return service.state()!.banks.find((b) => b.name === name)!.id;
+  }
+
+  it('addRecurring assigns an id to the template and to each of its lines', () => {
+    service.addRecurring({
+      name: 'Salary',
+      frequency: 'monthly',
+      nextDate: '2026-01-01',
+      lines: [
+        { amount: 5000, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') },
+        { amount: 500, type: 'others-out', accountType: 'bank', accountId: bankId('Savings') },
+      ],
+    });
+    const r = service.state()!.recurringTransactions[0];
+    expect(r.id).toBeTruthy();
+    expect(r.lines.length).toBe(2);
+    expect(r.lines[0].id).toBeTruthy();
+    expect(r.lines[1].id).toBeTruthy();
+    expect(r.lines[0].id).not.toBe(r.lines[1].id);
+  });
+
+  it('triggerRecurring books one transaction per line, all dated nextDate and all linked back to the template', () => {
+    service.addRecurring({
+      name: 'Salary',
+      frequency: 'monthly',
+      nextDate: '2026-01-01',
+      lines: [
+        { amount: 5000, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') },
+        { amount: 500, type: 'others-out', accountType: 'bank', accountId: bankId('Savings') },
+      ],
+    });
+    const r = service.state()!.recurringTransactions[0];
+
+    service.triggerRecurring(r.id);
+
+    const transactions = service.state()!.transactions;
+    expect(transactions.length).toBe(2);
+    expect(transactions.every((t) => t.date === '2026-01-01')).toBe(true);
+    expect(transactions.every((t) => t.recurringId === r.id)).toBe(true);
+    expect(transactions.find((t) => t.type === 'income')?.amount).toBe(5000);
+    expect(transactions.find((t) => t.type === 'others-out')?.amount).toBe(500);
+    // The template only advances once per trigger, not once per line.
+    expect(service.state()!.recurringTransactions[0].nextDate).toBe('2026-02-01');
+  });
+
+  it('updateRecurring replacing lines assigns fresh ids and drops the old lines entirely', () => {
+    service.addRecurring({
+      name: 'Salary',
+      frequency: 'monthly',
+      nextDate: '2026-01-01',
+      lines: [{ amount: 5000, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') }],
+    });
+    const original = service.state()!.recurringTransactions[0];
+
+    service.updateRecurring(original.id, {
+      lines: [{ amount: 200, type: 'expense', accountType: 'cash' }],
+    });
+
+    const updated = service.state()!.recurringTransactions[0];
+    expect(updated.lines.length).toBe(1);
+    expect(updated.lines[0].amount).toBe(200);
+    expect(updated.lines[0].id).not.toBe(original.lines[0].id);
+  });
+
+  it('updateRecurring without a lines patch leaves the existing lines untouched', () => {
+    service.addRecurring({
+      name: 'Salary',
+      frequency: 'monthly',
+      nextDate: '2026-01-01',
+      lines: [{ amount: 5000, type: 'income', accountType: 'bank', accountId: bankId('Main Bank') }],
+    });
+    const original = service.state()!.recurringTransactions[0];
+
+    service.updateRecurring(original.id, { name: 'Salary (renamed)' });
+
+    const updated = service.state()!.recurringTransactions[0];
+    expect(updated.name).toBe('Salary (renamed)');
+    expect(updated.lines).toEqual(original.lines);
+  });
+});
+
+describe('StateService recurring transactions - pausing', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addRecurring({
+      name: 'Netflix',
+      frequency: 'monthly',
+      nextDate: '2026-01-01',
+      lines: [{ amount: 45, type: 'expense', accountType: 'cash' }],
+    });
+  });
+
+  function recurring() {
+    return service.state()!.recurringTransactions[0];
+  }
+
+  it('is not paused by default', () => {
+    expect(recurring().paused).toBeFalsy();
+  });
+
+  it('togglePauseRecurring flips paused on and off, touching only the targeted item', () => {
+    service.addRecurring({
+      name: 'Gym',
+      frequency: 'monthly',
+      nextDate: '2026-01-05',
+      lines: [{ amount: 60, type: 'expense', accountType: 'cash' }],
+    });
+    const [netflix, gym] = service.state()!.recurringTransactions;
+
+    service.togglePauseRecurring(netflix.id);
+    expect(service.state()!.recurringTransactions.find((r) => r.id === netflix.id)!.paused).toBe(true);
+    expect(service.state()!.recurringTransactions.find((r) => r.id === gym.id)!.paused).toBeFalsy();
+
+    service.togglePauseRecurring(netflix.id);
+    expect(service.state()!.recurringTransactions.find((r) => r.id === netflix.id)!.paused).toBe(false);
+  });
+
+  it('triggerAllRecurring skips booking a transaction for a paused item, but still advances its nextDate', () => {
+    service.togglePauseRecurring(recurring().id);
+    expect(recurring().paused).toBe(true);
+
+    service.triggerAllRecurring();
+
+    expect(service.state()!.transactions.length).toBe(0);
+    expect(recurring().nextDate).toBe('2026-02-01');
+  });
+
+  it('triggerAllRecurring still books an unpaused item normally alongside a skipped paused one', () => {
+    service.addRecurring({
+      name: 'Gym',
+      frequency: 'monthly',
+      nextDate: '2026-01-05',
+      lines: [{ amount: 60, type: 'expense', accountType: 'cash' }],
+    });
+    const [netflix, gym] = service.state()!.recurringTransactions;
+    service.togglePauseRecurring(netflix.id);
+
+    service.triggerAllRecurring();
+
+    const transactions = service.state()!.transactions;
+    expect(transactions.length).toBe(1);
+    expect(transactions[0].recurringId).toBe(gym.id);
+    expect(transactions[0].amount).toBe(60);
+    // Both items' nextDate move forward, paused or not.
+    expect(service.state()!.recurringTransactions.find((r) => r.id === netflix.id)!.nextDate).toBe('2026-02-01');
+    expect(service.state()!.recurringTransactions.find((r) => r.id === gym.id)!.nextDate).toBe('2026-02-05');
+  });
+
+  it('triggerRecurring (single item) still books a paused item - pausing only affects "Add All"', () => {
+    service.togglePauseRecurring(recurring().id);
+    service.triggerRecurring(recurring().id);
+
+    expect(service.state()!.transactions.length).toBe(1);
+    expect(service.state()!.transactions[0].recurringId).toBe(recurring().id);
+    expect(recurring().nextDate).toBe('2026-02-01');
+  });
+});

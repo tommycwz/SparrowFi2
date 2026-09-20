@@ -25,42 +25,54 @@
   } @else {
     <div class="stack">
       @for (r of recurringList(); track r.id) {
-        <div class="card rec-card">
+        <div class="card rec-card" [class.rec-card-paused]="r.paused">
           <div class="rec-head" (click)="openEdit(r)">
             <div>
               <div class="rec-name">
-                <span class="rec-dot" [style.background]="typeColor(r.type)"></span>
+                <span class="rec-dot" [style.background]="typeColor(r.lines[0].type)"></span>
                 {{ r.name }}
+                @if (r.paused) {
+                  <span class="paused-badge">Paused</span>
+                }
               </div>
               <div class="muted small">
-                {{ frequencyLabels[r.frequency] }} · {{ typeLabels[r.type] }}
+                {{ frequencyLabels[r.frequency] }} · {{ typeLabels[r.lines[0].type]
+                }}{{ r.lines.length > 1 ? ' + ' + (r.lines.length - 1) + ' more' : '' }}
               </div>
             </div>
-            <div class="rec-amount" [style.color]="typeColor(r.type)">{{ money(r.amount) }}</div>
+            <div class="rec-amount" [class.positive]="netAmount(r) >= 0" [class.negative]="netAmount(r) < 0">
+              <span class="sign">{{ netAmount(r) >= 0 ? '+' : '-' }}</span>
+              <span class="cur">{{ currencySymbol() }}</span>
+              <span class="num">{{ numberPart(netAmountAbs(r)) }}</span>
+            </div>
           </div>
           <div class="rec-body" (click)="openEdit(r)">
-            <div>
-              <div class="muted small">Next Date</div>
-              <div class="rec-value">
+            <div class="rec-next-row">
+              <span class="muted small">Next Date</span>
+              <span class="rec-value">
                 {{ r.nextDate }}
                 @if (isDue(r)) {
                   <span class="due-badge">Due</span>
                 }
-              </div>
+              </span>
             </div>
-            <div>
-              <div class="muted small">Account</div>
-              <div class="rec-value">
-                <span class="rec-chip-dot" [style.background]="accountColor(r)"></span>
-                {{ accountLabel(r) }}
-              </div>
-            </div>
-            <div>
-              <div class="muted small">Category</div>
-              <div class="rec-value">
-                <span class="rec-chip-dot" [style.background]="categoryColor(r.categoryId)"></span>
-                {{ categoryName(r.categoryId) }}
-              </div>
+
+            <div class="rec-lines">
+              @for (line of r.lines; track line.id; let i = $index) {
+                <div class="rec-line">
+                  <span class="rec-line-num muted">{{ i + 1 }}.</span>
+                  <span class="rec-dot" [style.background]="typeColor(line.type)"></span>
+                  <span class="rec-line-label">
+                    {{ typeLabels[line.type] }} ·
+                    <span class="rec-chip-dot" [style.background]="accountColor(line)"></span>
+                    {{ accountLabel(line) }}
+                    @if (line.categoryId) {
+                      · {{ categoryName(line.categoryId) }}
+                    }
+                  </span>
+                  <span class="rec-line-amount" [style.color]="typeColor(line.type)">{{ money(line.amount) }}</span>
+                </div>
+              }
             </div>
           </div>
           @if (r.notes) {
@@ -69,6 +81,18 @@
           <div class="rec-actions">
             <button type="button" class="btn btn-primary" (click)="triggerOne(r)">
               <sf-icon name="check" [size]="16" /> Add to Transactions
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              (click)="togglePause(r)"
+              [attr.aria-label]="r.paused ? 'Resume' : 'Pause'"
+            >
+              @if (r.paused) {
+                <sf-icon name="play" [size]="16" /> Resume
+              } @else {
+                <sf-icon name="pause" [size]="16" /> Pause
+              }
             </button>
             <button type="button" class="btn btn-danger" (click)="remove(r.id)">Delete</button>
           </div>
@@ -79,7 +103,7 @@
 </div>
 
 @if (showModal()) {
-  <sf-modal [title]="editingId() ? 'Edit Recurring' : 'Add Recurring'" (close)="showModal.set(false)">
+  <sf-modal [title]="editingId() ? 'Edit Recurring' : 'Add Recurring'" [wide]="true" (close)="showModal.set(false)">
     <div class="field-row">
       <label>
         Name
@@ -91,33 +115,97 @@
         />
       </label>
 
-      <label>
-        Type
-        <div class="type-tabs" role="group" aria-label="Transaction type">
-          @for (t of typeOptions; track t) {
-            <button
-              type="button"
-              class="type-tab"
-              [class.active]="form().type === t"
-              [style.--tab-color]="typeColor(t)"
-              (click)="onTypeChange(t)"
-            >
-              {{ typeLabels[t] }}
-            </button>
+      <p class="muted small line-grid-hint">
+        Fill in lines like a spreadsheet, or copy a range from Excel/Google Sheets and paste it into any cell — it'll
+        fill across and down from there.
+      </p>
+
+      <div class="rec-lines-grid-wrap">
+        <div class="rec-lines-grid">
+          <div class="rec-line-row rec-line-head">
+            <span>Type</span>
+            <span>Account Type</span>
+            <span>Account</span>
+            <span>Category</span>
+            <span>Amount</span>
+            <span></span>
+          </div>
+
+          @for (line of form().lines; track $index; let i = $index) {
+            <div class="rec-line-row">
+              <select
+                [ngModel]="line.type"
+                (ngModelChange)="onLineTypeChange(i, $event)"
+                (paste)="onLinePaste($event, i, 'type')"
+              >
+                @for (t of typeOptions; track t) {
+                  <option [value]="t">{{ typeLabels[t] }}</option>
+                }
+              </select>
+
+              <select
+                [ngModel]="line.accountType"
+                (ngModelChange)="onLineAccountTypeChange(i, $event)"
+                (paste)="onLinePaste($event, i, 'accountType')"
+              >
+                <option value="bank">Bank</option>
+                <option value="wallet">Wallet</option>
+                <option value="card">Card</option>
+                <option value="cash">Cash</option>
+                <option value="others">Others</option>
+              </select>
+
+              @if (accountOptionsForLineType(line.accountType).length > 0) {
+                <select
+                  [ngModel]="line.accountId"
+                  (ngModelChange)="updateLineField(i, 'accountId', $event)"
+                  (paste)="onLinePaste($event, i, 'accountId')"
+                >
+                  <option value="">—</option>
+                  @for (a of accountOptionsForLineType(line.accountType); track a.id) {
+                    <option [value]="a.id">{{ a.name }}</option>
+                  }
+                </select>
+              } @else {
+                <input type="text" value="—" disabled (paste)="onLinePaste($event, i, 'accountId')" />
+              }
+
+              <select
+                [ngModel]="line.categoryId"
+                (ngModelChange)="updateLineField(i, 'categoryId', $event)"
+                (paste)="onLinePaste($event, i, 'categoryId')"
+              >
+                <option value="">Uncategorized</option>
+                @for (c of categoriesForLineType(line.type); track c.id) {
+                  <option [value]="c.id">{{ c.name }}</option>
+                }
+              </select>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                [ngModel]="line.amount"
+                (ngModelChange)="updateLineField(i, 'amount', $event)"
+                (paste)="onLinePaste($event, i, 'amount')"
+              />
+
+              @if (form().lines.length > 1) {
+                <button type="button" class="icon-btn del-btn" (click)="removeLine(i)" aria-label="Remove line">
+                  <sf-icon name="trash" [size]="14" />
+                </button>
+              } @else {
+                <span></span>
+              }
+            </div>
           }
         </div>
-      </label>
+      </div>
 
-      <label>
-        Amount
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          [ngModel]="form().amount"
-          (ngModelChange)="form.update((f) => ({ ...f, amount: $event }))"
-        />
-      </label>
+      <button type="button" class="btn btn-secondary btn-add-line" (click)="addLine()">
+        <sf-icon name="plus" [size]="14" /> Add Line
+      </button>
 
       <label>
         Repeats
@@ -141,41 +229,6 @@
           type="date"
           [ngModel]="form().nextDate"
           (ngModelChange)="form.update((f) => ({ ...f, nextDate: $event }))"
-        />
-      </label>
-
-      <label>
-        Account
-        <select [ngModel]="form().accountType" (ngModelChange)="onAccountTypeChange($event)">
-          <option value="bank">Bank</option>
-          <option value="wallet">Wallet</option>
-          <option value="card">Card</option>
-          <option value="cash">Cash</option>
-          <option value="others">Others</option>
-        </select>
-      </label>
-
-      @if (accountOptions().length > 0) {
-        <label>
-          Which {{ form().accountType }}
-          <sf-color-select
-            [options]="accountOptions()"
-            [value]="form().accountId"
-            (valueChange)="form.update((f) => ({ ...f, accountId: $event }))"
-            placeholder="Select…"
-          />
-        </label>
-      }
-
-      <label>
-        Category
-        <sf-color-select
-          [options]="categoriesForType()"
-          [value]="form().categoryId"
-          (valueChange)="form.update((f) => ({ ...f, categoryId: $event }))"
-          [allowEmpty]="true"
-          emptyLabel="Uncategorized"
-          placeholder="Uncategorized"
         />
       </label>
 

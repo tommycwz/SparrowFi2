@@ -7,6 +7,7 @@ import {
   CURRENCIES,
   RECURRING_FREQUENCY_LABELS,
   RecurringFrequency,
+  RecurringLine,
   RecurringTransaction,
   TRANSACTION_TYPE_LABELS,
   TransactionType,
@@ -14,31 +15,40 @@ import {
 import { formatAmountNumber } from '../../core/format.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
-import { ColorSelectComponent } from '../../shared/color-select';
 
-interface RecurringForm {
-  name: string;
-  amount: string;
+/** One editable line in the Add/Edit form - the same fields as
+ * `RecurringLine` minus its `id` (assigned by `StateService` on save), as
+ * plain strings matching how HTML form controls hand values back (parsed/
+ * validated only at save time) - same convention the Transactions page's
+ * Batch grid uses for its rows. */
+interface RecurringLineForm {
   type: TransactionType;
   accountType: AccountType;
   accountId: string;
   categoryId: string;
+  amount: string;
+}
+
+function blankLine(): RecurringLineForm {
+  return { type: 'expense', accountType: 'bank', accountId: '', categoryId: '', amount: '' };
+}
+
+interface RecurringForm {
+  name: string;
   frequency: RecurringFrequency;
   nextDate: string;
   notes: string;
+  /** Always at least one - see `RecurringTransaction.lines`. */
+  lines: RecurringLineForm[];
 }
 
 function blankForm(): RecurringForm {
   return {
     name: '',
-    amount: '',
-    type: 'expense',
-    accountType: 'bank',
-    accountId: '',
-    categoryId: '',
     frequency: 'monthly',
     nextDate: new Date().toISOString().slice(0, 10),
     notes: '',
+    lines: [blankLine()],
   };
 }
 
@@ -55,12 +65,41 @@ const TYPE_COLORS: Record<TransactionType, string> = {
   'others-out': 'var(--warning)',
 };
 
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  bank: 'Bank',
+  wallet: 'Wallet',
+  card: 'Card',
+  cash: 'Cash',
+  others: 'Others',
+};
+
+const TYPE_LABELS_REVERSE = new Map(
+  Object.entries(TYPE_LABELS).map(([k, v]) => [v.toLowerCase(), k as TransactionType]),
+);
+const ACCOUNT_TYPE_LABELS_REVERSE = new Map(
+  Object.entries(ACCOUNT_TYPE_LABELS).map(([k, v]) => [v.toLowerCase(), k as AccountType]),
+);
+
+/** Column order the lines grid presents fields in, left to right - also the
+ * order a multi-cell Excel/Sheets paste is fanned out across when it starts
+ * partway through a row (e.g. pasting from the Account Type column still
+ * lands Account/Category/Amount in the right places) - same convention the
+ * Transactions page's Batch grid uses for its own columns
+ * (`BATCH_FIELDS`). */
+const RECURRING_LINE_FIELDS: (keyof RecurringLineForm)[] = [
+  'type',
+  'accountType',
+  'accountId',
+  'categoryId',
+  'amount',
+];
+
 const TODAY = () => new Date().toISOString().slice(0, 10);
 
 @Component({
   selector: 'app-recurring',
   standalone: true,
-  imports: [FormsModule, IconComponent, ModalComponent, ColorSelectComponent],
+  imports: [FormsModule, IconComponent, ModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recurring.html',
   styleUrl: './recurring.scss',
@@ -85,17 +124,18 @@ export class RecurringPage {
     [...(this.state.state()?.recurringTransactions ?? [])].sort((a, b) => a.nextDate.localeCompare(b.nextDate)),
   );
 
-  /** Categories offered for the form's current type - same rule as the
-   * Transactions page's Add/Edit modal. */
-  readonly categoriesForType = computed(() => {
-    const type = this.form().type;
+  /** Categories offered for a form line of the given type - one lookup per
+   * line, since each line picks its own type independently (same pattern
+   * the Transactions page's Batch grid uses for its rows). */
+  categoriesForLineType(type: TransactionType): { id: string; name: string; color: string }[] {
     return (this.state.state()?.categories ?? []).filter((c) => c.type === type);
-  });
+  }
 
-  readonly accountOptions = computed(() => {
+  /** Same idea as `categoriesForLineType`, for a line's account type. */
+  accountOptionsForLineType(accountType: AccountType): { id: string; name: string; color?: string }[] {
     const s = this.state.state();
-    if (!s) return [] as { id: string; name: string; color?: string }[];
-    switch (this.form().accountType) {
+    if (!s) return [];
+    switch (accountType) {
       case 'bank':
         return s.banks;
       case 'wallet':
@@ -105,7 +145,7 @@ export class RecurringPage {
       default:
         return [];
     }
-  });
+  }
 
   readonly currencySymbol = computed(() => {
     const currency = this.state.state()?.settings.currency;
@@ -142,29 +182,170 @@ export class RecurringPage {
     return this.state.state()?.categories.find((c) => c.id === id)?.color ?? '#94A3B8';
   }
 
-  accountLabel(r: RecurringTransaction): string {
+  /** Account info now lives per-line (see `RecurringLine`), so this and
+   * `accountColor` take one line rather than the whole template. */
+  accountLabel(line: RecurringLine): string {
     const s = this.state.state();
     if (!s) return '';
-    if (r.accountType === 'cash') return 'Cash';
-    if (r.accountType === 'others') return 'Others';
-    const list = r.accountType === 'bank' ? s.banks : r.accountType === 'wallet' ? s.wallets : s.cards;
-    return list.find((a) => a.id === r.accountId)?.name ?? '—';
+    if (line.accountType === 'cash') return 'Cash';
+    if (line.accountType === 'others') return 'Others';
+    const list = line.accountType === 'bank' ? s.banks : line.accountType === 'wallet' ? s.wallets : s.cards;
+    return list.find((a) => a.id === line.accountId)?.name ?? '—';
   }
 
-  accountColor(r: RecurringTransaction): string {
+  accountColor(line: RecurringLine): string {
     const s = this.state.state();
     if (!s) return '#94A3B8';
-    if (r.accountType === 'cash' || r.accountType === 'others') return '#94A3B8';
-    const list = r.accountType === 'bank' ? s.banks : r.accountType === 'wallet' ? s.wallets : s.cards;
-    return list.find((a) => a.id === r.accountId)?.color ?? '#94A3B8';
+    if (line.accountType === 'cash' || line.accountType === 'others') return '#94A3B8';
+    const list = line.accountType === 'bank' ? s.banks : line.accountType === 'wallet' ? s.wallets : s.cards;
+    return list.find((a) => a.id === line.accountId)?.color ?? '#94A3B8';
   }
 
-  onTypeChange(type: TransactionType): void {
-    this.form.update((f) => ({ ...f, type, categoryId: '' }));
+  isInflow(type: TransactionType): boolean {
+    return type === 'income' || type === 'others-in';
   }
 
-  onAccountTypeChange(accountType: AccountType): void {
-    this.form.update((f) => ({ ...f, accountType, accountId: '' }));
+  /** Net effect of all of a template's lines together (inflows minus
+   * outflows) - shown as the card's headline amount now that a template
+   * can carry more than one line, possibly of more than one type, so
+   * there's no longer a single type to color the old single-amount display
+   * by. */
+  netAmount(r: RecurringTransaction): number {
+    return r.lines.reduce((sum, l) => sum + (this.isInflow(l.type) ? l.amount : -l.amount), 0);
+  }
+
+  netAmountAbs(r: RecurringTransaction): number {
+    return Math.abs(this.netAmount(r));
+  }
+
+  /** Adds one more blank line to the form - "+ Add Line", for a template
+   * that books more than one transaction together (see
+   * `RecurringTransaction.lines`). */
+  addLine(): void {
+    this.form.update((f) => ({ ...f, lines: [...f.lines, blankLine()] }));
+  }
+
+  /** Removes one line from the form. Refuses to drop the last remaining
+   * line - a template always needs at least one (see
+   * `RecurringTransaction.lines`'s doc comment) - rather than silently
+   * leaving the form with zero, which `save()` would then just reject
+   * anyway. */
+  removeLine(index: number): void {
+    this.form.update((f) => (f.lines.length <= 1 ? f : { ...f, lines: f.lines.filter((_, i) => i !== index) }));
+  }
+
+  /** Generic single-field edit for a line, for every field except Type/
+   * Account Type (which also reset a dependent field - see
+   * `onLineTypeChange`/`onLineAccountTypeChange` below). */
+  updateLineField(index: number, field: keyof RecurringLineForm, value: string): void {
+    this.form.update((f) => ({
+      ...f,
+      lines: f.lines.map((l, i) => (i === index ? { ...l, [field]: value } : l)),
+    }));
+  }
+
+  /** Changing a line's Type also clears its Category - the previous
+   * selection belonged to the old type's category list and would
+   * otherwise silently point at the wrong kind of category. */
+  onLineTypeChange(index: number, type: TransactionType): void {
+    this.form.update((f) => ({
+      ...f,
+      lines: f.lines.map((l, i) => (i === index ? { ...l, type, categoryId: '' } : l)),
+    }));
+  }
+
+  /** Same idea as `onLineTypeChange`, for Account Type -> Account. */
+  onLineAccountTypeChange(index: number, accountType: AccountType): void {
+    this.form.update((f) => ({
+      ...f,
+      lines: f.lines.map((l, i) => (i === index ? { ...l, accountType, accountId: '' } : l)),
+    }));
+  }
+
+  /** Detects a genuine multi-cell paste (more than one row, or more than
+   * one tab-separated column on a single line) - copied straight out of
+   * Excel/Google Sheets, that format is tab-between-columns,
+   * newline-between-rows. A single pasted value (no tabs, one line) is left
+   * alone entirely so the browser's own normal single-value paste still
+   * happens on that cell. Same behavior as the Transactions page's own
+   * `onBatchPaste`, adapted to a line's fields (no Date/Notes column here). */
+  onLinePaste(event: ClipboardEvent, rowIndex: number, field: keyof RecurringLineForm): void {
+    const text = event.clipboardData?.getData('text') ?? '';
+    if (!text) return;
+    const lines = text.replace(/\r/g, '').split('\n');
+    // A trailing blank line is just the newline after the last real row of
+    // a copied range, not a genuine empty row to paste.
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    const isMultiCell = lines.length > 1 || lines[0].includes('\t');
+    if (!isMultiCell) return;
+
+    event.preventDefault();
+    const startCol = RECURRING_LINE_FIELDS.indexOf(field);
+
+    this.form.update((f) => {
+      const rows = [...f.lines];
+      while (rows.length < rowIndex + lines.length) rows.push(blankLine());
+
+      lines.forEach((line, r) => {
+        const cells = line.split('\t');
+        let target = { ...rows[rowIndex + r] };
+        cells.forEach((raw, c) => {
+          const col = startCol + c;
+          if (col >= RECURRING_LINE_FIELDS.length) return; // extra columns past Amount are ignored
+          target = this.applyLinePasteCell(target, RECURRING_LINE_FIELDS[col], raw.trim());
+        });
+        rows[rowIndex + r] = target;
+      });
+
+      return { ...f, lines: rows };
+    });
+  }
+
+  /** Resolves one pasted cell's raw text into a `RecurringLineForm` field -
+   * same matching rules as the Transactions page's own
+   * `applyBatchPasteCell`: Type/Account Type match against their display
+   * labels (case-insensitive); Account/Category match by name *within the
+   * line's own (possibly just-pasted) Type/Account Type*, since a pasted
+   * row's columns are read left to right in `RECURRING_LINE_FIELDS` order
+   * and Type/Account Type always precede the fields that depend on them. An
+   * unrecognized value is left as whatever the line already had, rather
+   * than clearing it or blocking the rest of the paste - the user can
+   * always fix one cell by hand afterward. */
+  private applyLinePasteCell(
+    line: RecurringLineForm,
+    field: keyof RecurringLineForm,
+    raw: string,
+  ): RecurringLineForm {
+    switch (field) {
+      case 'type': {
+        const type = TYPE_LABELS_REVERSE.get(raw.toLowerCase());
+        return type ? { ...line, type, categoryId: '' } : line;
+      }
+      case 'accountType': {
+        const accountType = ACCOUNT_TYPE_LABELS_REVERSE.get(raw.toLowerCase());
+        return accountType ? { ...line, accountType, accountId: '' } : line;
+      }
+      case 'accountId': {
+        if (!raw) return line;
+        const match = this.accountOptionsForLineType(line.accountType).find(
+          (a) => a.name.toLowerCase() === raw.toLowerCase(),
+        );
+        return match ? { ...line, accountId: match.id } : line;
+      }
+      case 'categoryId': {
+        if (!raw) return line;
+        const match = this.categoriesForLineType(line.type).find(
+          (c) => c.name.toLowerCase() === raw.toLowerCase(),
+        );
+        return match ? { ...line, categoryId: match.id } : line;
+      }
+      case 'amount': {
+        const amount = parseFloat(raw.replace(/,/g, ''));
+        return isNaN(amount) ? line : { ...line, amount: String(amount) };
+      }
+      default:
+        return line;
+    }
   }
 
   openAdd(): void {
@@ -177,32 +358,46 @@ export class RecurringPage {
     this.editingId.set(r.id);
     this.form.set({
       name: r.name,
-      amount: String(r.amount),
-      type: r.type,
-      accountType: r.accountType,
-      accountId: r.accountId ?? '',
-      categoryId: r.categoryId ?? '',
       frequency: r.frequency,
       nextDate: r.nextDate,
       notes: r.notes ?? '',
+      lines: r.lines.map((l) => ({
+        type: l.type,
+        accountType: l.accountType,
+        accountId: l.accountId ?? '',
+        categoryId: l.categoryId ?? '',
+        amount: String(l.amount),
+      })),
     });
     this.showModal.set(true);
   }
 
+  /** Every line must have a valid positive amount to save - same
+   * all-or-nothing rule the Transactions page's Batch grid uses, rather
+   * than silently dropping a bad line: this is manual entry, not an
+   * unpredictable external file, so a clear "fix this line" beats a
+   * transaction quietly vanishing. */
   save(): void {
     const f = this.form();
-    const amount = parseFloat(f.amount);
-    if (!f.name.trim() || !f.nextDate || isNaN(amount) || amount <= 0) return;
+    if (!f.name.trim() || !f.nextDate || f.lines.length === 0) return;
+    const lines: Omit<RecurringLine, 'id'>[] = [];
+    for (const l of f.lines) {
+      const amount = parseFloat(l.amount);
+      if (isNaN(amount) || amount <= 0) return;
+      lines.push({
+        amount,
+        type: l.type,
+        accountType: l.accountType,
+        accountId: l.accountType === 'cash' || l.accountType === 'others' ? undefined : l.accountId || undefined,
+        categoryId: l.categoryId || undefined,
+      });
+    }
     const payload = {
       name: f.name.trim(),
-      amount,
-      type: f.type,
-      accountType: f.accountType,
-      accountId: f.accountType === 'cash' || f.accountType === 'others' ? undefined : f.accountId || undefined,
-      categoryId: f.categoryId || undefined,
       frequency: f.frequency,
       nextDate: f.nextDate,
       notes: f.notes.trim() || undefined,
+      lines,
     };
     const id = this.editingId();
     if (id) {
@@ -221,15 +416,33 @@ export class RecurringPage {
   }
 
   /** Books every recurring item to Transactions in one go - asks first
-   * since it creates one transaction per item all at once. */
+   * since it creates one transaction per active item's line, all at once.
+   * A paused item is skipped entirely, none of its lines included (see
+   * `RecurringTransaction.paused`), so the confirmation counts real
+   * transactions (not just templates) and calls out how many items are
+   * being skipped so it's not a surprise. */
   triggerAll(): void {
-    const count = this.recurringList().length;
-    if (count === 0) return;
-    const ok = confirm(
-      `Add ${count} recurring transaction${count === 1 ? '' : 's'} to your Transactions now?`,
-    );
-    if (!ok) return;
+    const all = this.recurringList();
+    if (all.length === 0) return;
+    const active = all.filter((r) => !r.paused);
+    const pausedCount = all.length - active.length;
+    const txCount = active.reduce((sum, r) => sum + r.lines.length, 0);
+    if (active.length === 0) {
+      alert('Every recurring item is paused - nothing to add. Unpause an item first, or add it individually.');
+      return;
+    }
+    const message =
+      `Add ${txCount} transaction${txCount === 1 ? '' : 's'} from ${active.length} recurring item${active.length === 1 ? '' : 's'} to your Transactions now?` +
+      (pausedCount > 0
+        ? ` ${pausedCount} paused item${pausedCount === 1 ? '' : 's'} will be skipped (but will still move to its next date).`
+        : '');
+    if (!confirm(message)) return;
     this.state.triggerAllRecurring();
+  }
+
+  /** Toggles a template's paused state - see `RecurringTransaction.paused`. */
+  togglePause(r: RecurringTransaction): void {
+    this.state.togglePauseRecurring(r.id);
   }
 
   remove(id: string): void {
