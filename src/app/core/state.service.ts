@@ -28,6 +28,14 @@ export interface AccountBalance {
 const CASH_BUCKET_COLOR = '#14B8A6';
 const OTHERS_BUCKET_COLOR = '#94A3B8';
 
+/** `notes` value stamped on the one-time opening-balance transaction that
+ * `addBank`/`addWallet` (and `migrateState`, for a legacy file's
+ * `initialCapital`) create instead of storing capital on the account
+ * record itself - see `addBank` for why. Used by `buildAccountBalances` to
+ * recognize that transaction and always count it, regardless of any
+ * `asOf` cutoff. */
+const OPENING_BALANCE_NOTE = 'Initial balance';
+
 /**
  * Single source of truth for the signed-in account's finance data: the
  * parsed state and its loaded/dirty/busy status. All mutation methods live
@@ -54,16 +62,23 @@ export class StateService {
    * only transactions dated on or before `asOfDate` - lets a report
    * reconstruct what balances looked like at the end of a past period
    * instead of always reading today's live figures. A bank/wallet's
-   * `initialCapital` has no date of its own (it's the opening balance
-   * before any transaction), so it's always included, same as in
-   * `accountBalances()`. */
+   * opening balance (see `addBank`/`addWallet`) has no meaningful date of
+   * its own - it's recorded as a transaction stamped with whatever day the
+   * account happened to be created in the app, not a real historical
+   * event - so it's always included here regardless of `asOfDate`, same as
+   * in `accountBalances()`. Without this, an account created today would
+   * appear to have had a $0 balance on any past date, which defeats the
+   * point of "as of" reconstruction. */
   accountBalancesAsOf(asOfDate: string): AccountBalance[] {
     return this.buildAccountBalances(asOfDate);
   }
 
   /** Shared by `accountBalances` and `accountBalancesAsOf` - `cutoffDate:
    * null` means "no cutoff" (every transaction counts, i.e. today's live
-   * figures), otherwise only transactions dated on or before it count. */
+   * figures), otherwise only transactions dated on or before it count -
+   * except an opening-balance transaction (see `OPENING_BALANCE_NOTE`),
+   * which always counts since it represents the account's starting point
+   * rather than a dated event. */
   private buildAccountBalances(cutoffDate: string | null): AccountBalance[] {
     const s = this._state();
     if (!s) return [];
@@ -71,7 +86,8 @@ export class StateService {
     const bump = (key: string, delta: number) => totals.set(key, (totals.get(key) ?? 0) + delta);
 
     for (const t of s.transactions) {
-      if (cutoffDate !== null && t.date > cutoffDate) continue;
+      const isOpeningBalance = t.notes === OPENING_BALANCE_NOTE;
+      if (cutoffDate !== null && !isOpeningBalance && t.date > cutoffDate) continue;
       const signedAmount = t.type === 'income' || t.type === 'others-in' ? t.amount : -t.amount;
       if (t.accountType === 'cash') {
         bump('bucket:cash', signedAmount);
@@ -334,7 +350,7 @@ export class StateService {
                   accountType: 'bank',
                   accountId: id,
                   categoryId: category?.id,
-                  notes: 'Initial balance',
+                  notes: OPENING_BALANCE_NOTE,
                 },
               ]
             : s.transactions,
@@ -385,7 +401,7 @@ export class StateService {
                   accountType: 'wallet',
                   accountId: id,
                   categoryId: category?.id,
-                  notes: 'Initial balance',
+                  notes: OPENING_BALANCE_NOTE,
                 },
               ]
             : s.transactions,

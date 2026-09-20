@@ -329,7 +329,11 @@ describe('TransactionsPage', () => {
 
     it('fans multiple pasted rows down into subsequent grid rows, growing the grid if needed', () => {
       page.openBatch();
-      const text = ['2026-01-01\t10', '2026-01-02\t20', '2026-01-03\t30'].join('\n');
+      // Column order is Date, Type, Account Type, Account, Category, Amount,
+      // Notes - so reaching the Amount column from Date needs 4 blank cells
+      // (Type/Account Type/Account/Category) in between.
+      const row = (date: string, amount: string) => `${date}\t\t\t\t\t${amount}`;
+      const text = [row('2026-01-01', '10'), row('2026-01-02', '20'), row('2026-01-03', '30')].join('\n');
       page.onBatchPaste(pasteEvent(text) as unknown as ClipboardEvent, 6, 'date'); // pasted starting at the 7th of 8 rows
 
       expect(page.batchRows().length).toBeGreaterThanOrEqual(9);
