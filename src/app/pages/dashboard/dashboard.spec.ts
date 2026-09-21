@@ -526,7 +526,7 @@ describe('DashboardPage', () => {
       fixture.detectChanges();
 
       const stats = el.querySelectorAll('.stat .stat-value');
-      const netEl = stats[3] as HTMLElement; // Income, Expense, Commitment, Net This Month
+      const netEl = stats[4] as HTMLElement; // Income, Expense, Commitment, Pending Recurring, Net This Month
       expect(netEl.classList.contains('negative')).toBe(true);
       expect(netEl.classList.contains('positive')).toBe(false);
 

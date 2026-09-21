@@ -215,7 +215,7 @@
 
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
@@ -257,6 +257,15 @@
 
   .stats-bar .stat:nth-child(odd):not(:last-child)::after {
     display: block;
+  }
+
+  /* Five stats in a 2-column grid leave the 5th (Net Recurring) alone on
+     its own row - default grid auto-placement would strand it in the
+     left column with empty space beside it, so it spans the full row
+     instead and reads as a deliberate closing summary rather than a
+     leftover. */
+  .stats-bar .stat:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 
@@ -361,6 +370,48 @@
   font-weight: 600;
 }
 
+/* Income/Expense/Commitment split under the Pending Recurring mini-card's
+   headline net figure and "N items left" link - same
+   uppercase-label-over-bold-value shape as `.stat-label`/`.stat-value` in
+   the Monthly bar, just condensed into three narrow columns to fit a
+   mini-card. */
+.pending-breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.pending-breakdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.pending-breakdown-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pending-breakdown-value {
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pending-breakdown-value.positive {
+  color: var(--success);
+}
+
+.pending-breakdown-value.negative {
+  color: var(--danger);
+}
+
 .meter-track {
   position: relative;
   display: flex;
@@ -429,6 +480,32 @@
   color: var(--danger);
   font-weight: 700;
   flex-shrink: 0;
+}
+
+/* How much of this month's still-pending Recurring templates would post
+   to a card once triggered - sits below the debt lines (or the "No card
+   debt outstanding" empty state) with its own divider, since it's a
+   forward-looking figure rather than another line of today's balance. */
+.card-debt-pending {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.card-debt-pending-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.card-debt-pending-row b {
+  font-weight: 700;
+}
+
+.card-debt-pending-row b.negative {
+  color: var(--danger);
 }
 
 /* ----- Zone 3: Spending Pulse ----------------------------------------------- */
@@ -555,6 +632,17 @@
 .legend-row .amt {
   margin-left: auto;
   font-weight: 700;
+}
+
+/* Recurring Variable/Recurring Committed sit in the same `.ring-legend`
+   list as the actual Committed/Variable/Saved rows above them, but a top
+   border sets them apart as a different timeframe (monthly-equivalent
+   forecast from Recurring templates, not this month's actual
+   transactions) rather than three more slices of the same ring. */
+.legend-row-recurring {
+  margin-top: 0.5rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
 }
 
 /* ----- Zone 4: Accounts, split into Assets / Liabilities -------------------- */

@@ -90,12 +90,26 @@
       </div>
       <div class="stat">
         <div class="stat-label muted"
+          >Pending Recurring<sf-info-tip
+            label="Pending Recurring"
+            text="Active Recurring templates still due to happen this calendar month - overdue from earlier this month or still upcoming - that haven't been added to Transactions yet. Adding one advances it to its next occurrence, which drops it out of this total automatically."
+        /></div>
+        <div
+          class="stat-value"
+          [class.positive]="pendingRecurringTotals().net >= 0"
+          [class.negative]="pendingRecurringTotals().net < 0"
+        >
+          {{ pendingRecurringStatLabel() }}
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-label muted"
           >Net This Month<sf-info-tip
             label="Net This Month"
-            text="Income minus Expense minus Commitment for the current month. Transfers, adjustments and Fixed Deposit/Investment principal moving in or out aren't included."
+            text="Income minus Expense minus Commitment for the current month, plus Pending Recurring - what the month nets out to once what's still outstanding gets added to Transactions. Transfers, adjustments and Fixed Deposit/Investment principal moving in or out aren't included."
             align="end"
         /></div>
-        <div class="stat-value" [class.positive]="monthlyStats().net >= 0" [class.negative]="monthlyStats().net < 0">
+        <div class="stat-value" [class.positive]="netThisMonthTotal() >= 0" [class.negative]="netThisMonthTotal() < 0">
           {{ netStatLabel() }}
         </div>
       </div>
@@ -153,24 +167,49 @@
           <div class="mini-value positive">{{ money(0) }}</div>
           <span class="mini-cap muted">No card debt outstanding</span>
         }
+        <div class="card-debt-pending">
+          <div class="card-debt-pending-row">
+            <span class="muted">Pending Recurring</span>
+            <b [class.negative]="pendingCardRecurringTotal() > 0">{{ money(pendingCardRecurringTotal()) }}</b>
+          </div>
+        </div>
       </div>
 
       <div class="card mini-card">
         <span class="mini-label muted"
-          >Next Maturity<sf-info-tip
-            label="Next Maturity"
-            text="The active Fixed Deposit that matures soonest, and what it will pay out (principal + interest) on that date."
+          >Pending Recurring<sf-info-tip
+            label="Pending Recurring"
+            text="Active Recurring templates still due to happen this calendar month - overdue from earlier this month or still upcoming - that haven't been added to Transactions yet. Adding one advances it to its next occurrence, which drops it out of this total automatically."
             align="end"
         /></span>
-        @if (fixedDepositSummary(); as fd) {
-          <div class="mini-value">
-            {{ fd.nextBankName }}
-            <span class="chip chip-warn">{{ fd.nextMaturityCountdown }}</span>
+        @if (pendingRecurringTotals().count > 0) {
+          <div
+            class="mini-value"
+            [class.positive]="pendingRecurringTotals().net >= 0"
+            [class.negative]="pendingRecurringTotals().net < 0"
+          >
+            {{ pendingRecurringStatLabel() }}
           </div>
-          <span class="mini-cap muted">{{ fd.nextMaturityDate }} · payout {{ money(fd.nextMaturityValue) }}</span>
+          <a routerLink="/recurring" class="mini-cap link"
+            >{{ pendingRecurringTotals().count }} item{{ pendingRecurringTotals().count === 1 ? '' : 's' }} left this month</a
+          >
+          <div class="pending-breakdown">
+            <div class="pending-breakdown-item">
+              <span class="pending-breakdown-label muted">Income</span>
+              <span class="pending-breakdown-value positive">+{{ money(pendingRecurringTotals().income) }}</span>
+            </div>
+            <div class="pending-breakdown-item">
+              <span class="pending-breakdown-label muted">Expense</span>
+              <span class="pending-breakdown-value negative">-{{ money(pendingRecurringTotals().expense) }}</span>
+            </div>
+            <div class="pending-breakdown-item">
+              <span class="pending-breakdown-label muted">Commitment</span>
+              <span class="pending-breakdown-value negative">-{{ money(pendingRecurringTotals().commitment) }}</span>
+            </div>
+          </div>
         } @else {
-          <div class="mini-value muted">No active deposits</div>
-          <a routerLink="/fixed-deposits" class="mini-cap link">Add a Fixed Deposit</a>
+          <div class="mini-value muted">{{ money(0) }}</div>
+          <span class="mini-cap muted">Nothing left this month</span>
         }
       </div>
     </div>
@@ -224,6 +263,12 @@
               @if (savingsRate().overspent) {
                 <span class="chip chip-bad">Overspent this month</span>
               }
+              <div class="legend-row legend-row-recurring">
+                <span class="dot" style="background: var(--danger)"></span>Recurring Variable<span class="amt">{{ money(pendingRecurringTotals().expense) }}</span>
+              </div>
+              <div class="legend-row">
+                <span class="dot" style="background: var(--commitment)"></span>Recurring Committed<span class="amt">{{ money(pendingRecurringTotals().commitment) }}</span>
+              </div>
             </div>
           </div>
         } @else {

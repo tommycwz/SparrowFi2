@@ -40,6 +40,10 @@ interface MonthlyStats {
   net: number;
 }
 
+/** Same shape as `MonthlyStats`, but built from active Recurring templates
+ * instead of recorded transactions - see `pendingRecurringTotals`. */
+type RecurringMonthlyTotals = MonthlyStats;
+
 interface SparklinePoint {
   x: number;
   y: number;
@@ -496,10 +500,82 @@ export class DashboardPage {
     return { income, expense, commitment, net: income - expense - commitment };
   });
 
+  /** "Net This Month" folded together with what's still Pending Recurring
+   * this month - not just what's already been recorded, but what the
+   * month nets out to once the outstanding Recurring templates get added
+   * too. Reads `pendingRecurringTotals` (declared further down) purely by
+   * call order at read time - both are plain `computed()` signals, so
+   * declaration order within the class doesn't matter, only that both
+   * exist by the time either is actually read, which is always true. */
+  readonly netThisMonthTotal = computed(() => this.monthlyStats().net + this.pendingRecurringTotals().net);
+
   readonly netStatLabel = computed(() => {
-    const net = this.monthlyStats().net;
+    const net = this.netThisMonthTotal();
     const sign = net < 0 ? '-' : '';
     return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
+  });
+
+  /** Income/expense/commitment/net/count for every active (non-paused)
+   * Recurring template still due to happen *this calendar month*
+   * (`nextDate` falls in the current month, whether that's overdue from
+   * earlier this month or still upcoming) and hasn't been booked yet -
+   * "what's left on my plate before the month is out". Nothing needs to
+   * track "already added" separately: triggering a
+   * template (`StateService.triggerRecurring`) advances its `nextDate` to
+   * the following occurrence, which is exactly what drops it out of this
+   * total on its own - a monthly template moves straight to next month,
+   * while a daily/weekly one may still have another occurrence left this
+   * month and correctly stays counted for that one. */
+  readonly pendingRecurringTotals = computed<RecurringMonthlyTotals & { count: number }>(() => {
+    const s = this.state.state();
+    if (!s) return { income: 0, expense: 0, commitment: 0, net: 0, count: 0 };
+    const monthKey = monthKeyOf();
+    let income = 0;
+    let expense = 0;
+    let commitment = 0;
+    let count = 0;
+    for (const r of s.recurringTransactions) {
+      if (r.paused || r.nextDate.slice(0, 7) !== monthKey) continue;
+      count++;
+      for (const line of r.lines) {
+        if (line.type === 'income') income += line.amount;
+        else if (line.type === 'expense') expense += line.amount;
+        else if (line.type === 'commitment') commitment += line.amount;
+      }
+    }
+    return { income, expense, commitment, net: income - expense - commitment, count };
+  });
+
+  readonly pendingRecurringStatLabel = computed(() => {
+    const net = this.pendingRecurringTotals().net;
+    const sign = net < 0 ? '-' : '';
+    return `${sign}${this.currencySymbol()}${formatAmountNumber(Math.abs(net))}`;
+  });
+
+  /** How much of this month's still-pending Recurring templates would
+   * post to a card account once triggered - same "due this month, not
+   * yet added to Transactions" scope as `pendingRecurringTotals`, just
+   * narrowed to lines whose `accountType` is `'card'`, since the balance
+   * shown in Card Debt Outstanding doesn't yet reflect a subscription or
+   * bill that hasn't been triggered. Nets out the rare case of an
+   * income-type line against a card (e.g. a refund). Drops to 0 the same
+   * way `pendingRecurringTotals` does: triggering a template advances its
+   * `nextDate` past this month (or to its next occurrence), which is what
+   * removes it here too - no separate "already added" flag needed. */
+  readonly pendingCardRecurringTotal = computed(() => {
+    const s = this.state.state();
+    if (!s) return 0;
+    const monthKey = monthKeyOf();
+    let total = 0;
+    for (const r of s.recurringTransactions) {
+      if (r.paused || r.nextDate.slice(0, 7) !== monthKey) continue;
+      for (const line of r.lines) {
+        if (line.accountType !== 'card') continue;
+        if (line.type === 'income' || line.type === 'others-in') total -= line.amount;
+        else total += line.amount;
+      }
+    }
+    return total;
   });
 
   /** Savings Rate ring: Committed / Variable / Saved as shares of this
