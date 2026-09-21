@@ -276,6 +276,91 @@ describe('DashboardPage', () => {
     });
   });
 
+  describe('pendingRecurringTotals', () => {
+    it('is all zero/empty with no recurring templates', () => {
+      const totals = page.pendingRecurringTotals();
+      expect(totals).toEqual({ income: 0, expense: 0, commitment: 0, net: 0, count: 0 });
+    });
+
+    it('counts a template due earlier this month, but not one paused or due next month', () => {
+      state.addRecurring({
+        name: 'Rent',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 1200, type: 'commitment', accountType: 'cash' }],
+      });
+      state.addRecurring({
+        name: 'Paused subscription',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        paused: true,
+        lines: [{ amount: 50, type: 'expense', accountType: 'cash' }],
+      });
+      state.addRecurring({
+        name: 'Next month bill',
+        frequency: 'monthly',
+        nextDate: monthsAgoDate(-1),
+        lines: [{ amount: 999, type: 'expense', accountType: 'cash' }],
+      });
+
+      const totals = page.pendingRecurringTotals();
+      expect(totals.count).toBe(1);
+      expect(totals.commitment).toBe(1200);
+      expect(totals.expense).toBe(0);
+      expect(totals.net).toBe(-1200);
+    });
+
+    it('drops a template out once triggered, since triggering advances nextDate past this month', () => {
+      state.addRecurring({
+        name: 'Rent',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 1200, type: 'commitment', accountType: 'cash' }],
+      });
+      expect(page.pendingRecurringTotals().count).toBe(1);
+
+      const id = state.state()!.recurringTransactions[0].id;
+      state.triggerRecurring(id);
+      expect(page.pendingRecurringTotals().count).toBe(0);
+      expect(page.pendingRecurringTotals().net).toBe(0);
+    });
+  });
+
+  describe('pendingCardRecurringTotal', () => {
+    it('only counts lines bound to a card account, not cash/bank lines', () => {
+      state.addRecurring({
+        name: 'Netflix',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 55, type: 'expense', accountType: 'card' }],
+      });
+      state.addRecurring({
+        name: 'Rent',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 1200, type: 'commitment', accountType: 'cash' }],
+      });
+
+      expect(page.pendingCardRecurringTotal()).toBe(55);
+    });
+  });
+
+  describe('netThisMonthTotal', () => {
+    it('adds this month\'s actual net and Pending Recurring net together', () => {
+      state.addTransaction({ date: TODAY, amount: 500, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 200, type: 'expense', accountType: 'cash' });
+      state.addRecurring({
+        name: 'Rent',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 100, type: 'commitment', accountType: 'cash' }],
+      });
+
+      // Actual net: 500 - 200 = 300. Pending Recurring net: -100.
+      expect(page.netThisMonthTotal()).toBe(200);
+    });
+  });
+
   describe('savingsRate', () => {
     it('has no income this month', () => {
       const rate = page.savingsRate();
@@ -563,18 +648,43 @@ describe('DashboardPage', () => {
       expect(el.querySelector('.debt-line')?.textContent).toContain('Visa');
     });
 
-    it('shows an "Add a Fixed Deposit" link when there are none, and the countdown chip once one is active', () => {
+    it('shows "Nothing left this month" until a Recurring template is due, then the count and net', () => {
       fixture.detectChanges();
       let el = fixture.nativeElement as HTMLElement;
-      expect(el.textContent).toContain('No active deposits');
+      expect(el.textContent).toContain('Nothing left this month');
 
-      state.addBank({ name: 'Main Bank', color: '#111', initialCapital: 0 });
-      const bankId = state.state()!.banks[0].id;
-      state.addFixedDeposit({ bankId, startDate: TODAY, amount: 1000, percentage: 5, months: 12, status: 'active' });
+      state.addRecurring({
+        name: 'Rent',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 1200, type: 'commitment', accountType: 'cash' }],
+      });
       fixture.detectChanges();
       el = fixture.nativeElement as HTMLElement;
-      expect(el.textContent).toContain('Main Bank');
-      expect(el.querySelector('.chip-warn')).not.toBeNull();
+      expect(el.textContent).toContain('1 item left this month');
+      expect(el.textContent).not.toContain('Nothing left this month');
+    });
+
+    it('shows a Pending Recurring amount under Card Debt Outstanding only for card-bound lines, and it clears once triggered', () => {
+      state.addRecurring({
+        name: 'Netflix',
+        frequency: 'monthly',
+        nextDate: TODAY,
+        lines: [{ amount: 55, type: 'expense', accountType: 'card' }],
+      });
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      const pendingRow = el.querySelector('.card-debt-pending-row') as HTMLElement;
+      expect(pendingRow.textContent).toContain('55.00');
+      expect(pendingRow.querySelector('b')?.classList.contains('negative')).toBe(true);
+
+      const id = state.state()!.recurringTransactions[0].id;
+      state.triggerRecurring(id);
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+      const clearedRow = el.querySelector('.card-debt-pending-row') as HTMLElement;
+      expect(clearedRow.textContent).toContain('0.00');
+      expect(clearedRow.querySelector('b')?.classList.contains('negative')).toBe(false);
     });
 
     it('draws one donut segment per savings-rate slice and shows the Overspent chip only when overspent', () => {
