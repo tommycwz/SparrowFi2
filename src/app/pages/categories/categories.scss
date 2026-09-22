@@ -75,6 +75,30 @@
 .name {
   flex: 1;
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Up/Down reordering - see `StateService.moveCategory`'s doc comment for
+   why there's no drag-and-drop here: two tap targets work identically with
+   a mouse or a finger and need no extra library, unlike a real drag
+   gesture. Grouped tightly together (no gap) so the pair reads as one
+   "reorder" control rather than two unrelated buttons. */
+.reorder-btns {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* Overrides `.icon-btn:hover`'s red "danger" tint below (meant for the
+   Delete button) - moving a row isn't a destructive action, so its hover
+   state stays neutral instead of implying one. */
+.reorder-btns .icon-btn:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--text);
+}
+
+.reorder-btns .icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 /* Shown in place of the delete button for a `locked` category (see

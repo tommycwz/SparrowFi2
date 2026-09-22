@@ -53,7 +53,7 @@ describe('CategoriesPage', () => {
   });
 
   describe('locked categories (Fixed Deposit/Investment-linked)', () => {
-    it('hides the delete button and shows a "Locked" badge instead', () => {
+    it('hides the delete button and shows a "Locked" badge instead, but keeps the row reorderable', () => {
       state.addCategory({ name: 'Investment Profit', color: '#10B981', type: 'income', locked: true });
       state.addCategory({ name: 'Side Hustle', color: '#22C55E', type: 'income' });
       page.tab.set('income');
@@ -63,10 +63,14 @@ describe('CategoriesPage', () => {
       const lockedRow = rows.find((r) => r.textContent?.includes('Investment Profit'))!;
       const customRow = rows.find((r) => r.textContent?.includes('Side Hustle'))!;
 
-      expect(lockedRow.querySelector('.icon-btn')).toBeNull();
+      expect(lockedRow.querySelector('[aria-label="Delete"]')).toBeNull();
       expect(lockedRow.querySelector('.badge-locked')?.textContent).toContain('Locked');
-      expect(customRow.querySelector('.icon-btn')).not.toBeNull();
+      expect(customRow.querySelector('[aria-label="Delete"]')).not.toBeNull();
       expect(customRow.querySelector('.badge-locked')).toBeNull();
+
+      // Being locked only blocks deletion (see `Category.locked`) - it
+      // doesn't affect display order, so the reorder buttons still show.
+      expect(lockedRow.querySelector('.reorder-btns')).not.toBeNull();
     });
 
     it('remove() is a no-op for a locked category, even if called directly', () => {
@@ -76,6 +80,42 @@ describe('CategoriesPage', () => {
       page.remove(id);
 
       expect(state.state()!.categories.length).toBe(1);
+    });
+  });
+
+  describe('reordering', () => {
+    beforeEach(() => {
+      state.addCategory({ name: 'Groceries', color: '#F97316', type: 'expense' });
+      state.addCategory({ name: 'Transport', color: '#D97706', type: 'expense' });
+      state.addCategory({ name: 'Shopping', color: '#EC4899', type: 'expense' });
+      page.tab.set('expense');
+    });
+
+    it('move() up/down swaps the category with its neighbor in the tab', () => {
+      const [groceries, transport] = state.state()!.categories;
+
+      page.move(transport.id, 'up');
+
+      expect(page.categories().map((c) => c.name)).toEqual(['Transport', 'Groceries', 'Shopping']);
+
+      page.move(groceries.id, 'down');
+      // Groceries (now 2nd) swaps with Shopping (3rd).
+      expect(page.categories().map((c) => c.name)).toEqual(['Transport', 'Shopping', 'Groceries']);
+    });
+
+    it('disables the Up button on the first row and the Down button on the last row', () => {
+      fixture.detectChanges();
+      const rows = Array.from(fixture.nativeElement.querySelectorAll('.row')) as HTMLElement[];
+
+      const firstUp = rows[0].querySelector('[aria-label="Move up"]') as HTMLButtonElement;
+      const firstDown = rows[0].querySelector('[aria-label="Move down"]') as HTMLButtonElement;
+      const lastUp = rows[rows.length - 1].querySelector('[aria-label="Move up"]') as HTMLButtonElement;
+      const lastDown = rows[rows.length - 1].querySelector('[aria-label="Move down"]') as HTMLButtonElement;
+
+      expect(firstUp.disabled).toBe(true);
+      expect(firstDown.disabled).toBe(false);
+      expect(lastUp.disabled).toBe(false);
+      expect(lastDown.disabled).toBe(true);
     });
   });
 });

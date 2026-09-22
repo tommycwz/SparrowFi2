@@ -32,7 +32,11 @@ export class CategoriesPage {
 
   readonly allCategories = computed(() => this.state.state()?.categories ?? []);
 
-  /** Categories for the active tab. */
+  /** Categories for the active tab, in the order they're actually stored
+   * (see `StateService.moveCategory`'s doc comment - there's no separate
+   * "order" field, `AppState.categories`' array order *is* the display
+   * order, both here and in every category `<select>` elsewhere in the
+   * app). */
   readonly categories = computed(() => {
     const t = this.tab();
     return this.allCategories().filter((c) => c.type === t);
@@ -92,5 +96,16 @@ export class CategoriesPage {
     if (confirm('Delete this category? Transactions using it become uncategorized.')) {
       this.state.removeCategory(id);
     }
+  }
+
+  /** Moves a category one place earlier/later within its own tab - a thin
+   * pass-through to `StateService.moveCategory` (see its doc comment for
+   * why this is just an array-position swap rather than a stored "order"
+   * field). The template only calls this for a direction the row's
+   * up/down button is actually showing (`$first`/`$last` in `categories.html`
+   * hide the button that would otherwise be a no-op at either end of the
+   * list), but `moveCategory` itself is a no-op too if called anyway. */
+  move(id: string, direction: 'up' | 'down'): void {
+    this.state.moveCategory(id, direction);
   }
 }

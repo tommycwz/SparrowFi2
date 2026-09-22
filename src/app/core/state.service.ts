@@ -484,6 +484,43 @@ export class StateService {
     }));
   }
 
+  /** Moves one category one place earlier/later among categories of its
+   * own `type` - what the Categories page's per-row reorder buttons call.
+   * There's no separate "order" field on `Category`: display order
+   * everywhere a category list is shown (the Categories page's own tabs,
+   * every category `<select>` elsewhere in the app) is simply
+   * `AppState.categories`' array order, so reordering is just moving the
+   * category within that one array - nothing else to keep in sync.
+   *
+   * Categories of every type are interleaved together in the same flat
+   * array (they're only *displayed* split into tabs, by `CategoriesPage`
+   * filtering client-side), so "the neighbor above/below" isn't simply
+   * `index - 1`/`index + 1` - this walks past any categories of a
+   * *different* type to find the nearest one that's actually the same
+   * type, then swaps the two array positions. A category already
+   * first/last within its own type (no such neighbor exists in that
+   * direction) is a no-op - `CategoriesPage` also hides that direction's
+   * button there via `$first`/`$last`, so this is a defensive backstop
+   * rather than the primary guard. */
+  moveCategory(id: string, direction: 'up' | 'down'): void {
+    this.updateState((s) => {
+      const categories = [...s.categories];
+      const index = categories.findIndex((c) => c.id === id);
+      if (index === -1) return s;
+      const type = categories[index].type;
+
+      const step = direction === 'up' ? -1 : 1;
+      let neighborIndex = index + step;
+      while (neighborIndex >= 0 && neighborIndex < categories.length && categories[neighborIndex].type !== type) {
+        neighborIndex += step;
+      }
+      if (neighborIndex < 0 || neighborIndex >= categories.length) return s;
+
+      [categories[index], categories[neighborIndex]] = [categories[neighborIndex], categories[index]];
+      return { ...s, categories };
+    });
+  }
+
   addTransaction(t: Omit<Transaction, 'id'>): void {
     this.updateState((s) => ({
       ...s,

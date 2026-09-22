@@ -23,10 +23,32 @@
     </div>
   } @else {
     <div class="stack">
-      @for (c of categories(); track c.id) {
+      @for (c of categories(); track c.id; let first = $first; let last = $last) {
         <div class="card row" (click)="openEdit(c)">
           <div class="dot" [style.background]="c.color"></div>
           <div class="name">{{ c.name }}</div>
+
+          <div class="reorder-btns" (click)="$event.stopPropagation()">
+            <button
+              type="button"
+              class="icon-btn"
+              [disabled]="first"
+              (click)="move(c.id, 'up')"
+              aria-label="Move up"
+            >
+              <sf-icon name="chevron-up" [size]="16" />
+            </button>
+            <button
+              type="button"
+              class="icon-btn"
+              [disabled]="last"
+              (click)="move(c.id, 'down')"
+              aria-label="Move down"
+            >
+              <sf-icon name="chevron-down" [size]="16" />
+            </button>
+          </div>
+
           @if (c.locked) {
             <span class="badge-locked" title="Used by Fixed Deposits and Investments - can't be deleted">Locked</span>
           } @else {

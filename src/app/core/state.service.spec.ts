@@ -1179,3 +1179,66 @@ describe('StateService budgets', () => {
     expect(service.state()!.budgets.find((b) => b.id === food.id)!.period).toBe('daily');
   });
 });
+
+describe('StateService.moveCategory', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+  });
+
+  function categoryId(name: string): string {
+    return service.state()!.categories.find((c) => c.name === name)!.id;
+  }
+
+  function names(): string[] {
+    return service.state()!.categories.map((c) => c.name);
+  }
+
+  it('swaps a category with the previous/next one of the same type', () => {
+    service.addCategory({ name: 'Groceries', color: '#F97316', type: 'expense' });
+    service.addCategory({ name: 'Transport', color: '#D97706', type: 'expense' });
+    service.addCategory({ name: 'Shopping', color: '#EC4899', type: 'expense' });
+
+    service.moveCategory(categoryId('Transport'), 'up');
+    expect(names()).toEqual(['Transport', 'Groceries', 'Shopping']);
+
+    service.moveCategory(categoryId('Transport'), 'down');
+    expect(names()).toEqual(['Groceries', 'Transport', 'Shopping']);
+  });
+
+  it('is a no-op when moving the first category of its type up, or the last one down', () => {
+    service.addCategory({ name: 'Groceries', color: '#F97316', type: 'expense' });
+    service.addCategory({ name: 'Transport', color: '#D97706', type: 'expense' });
+
+    service.moveCategory(categoryId('Groceries'), 'up');
+    expect(names()).toEqual(['Groceries', 'Transport']);
+
+    service.moveCategory(categoryId('Transport'), 'down');
+    expect(names()).toEqual(['Groceries', 'Transport']);
+  });
+
+  it('skips over categories of a different type to find the real same-type neighbor', () => {
+    // Interleaved types, as they'd end up after edits/imports rather than
+    // grouped together - `moveCategory` must walk past 'income' to find
+    // Transport's actual same-type ('expense') neighbor, not just swap
+    // with the physically adjacent array element.
+    service.addCategory({ name: 'Groceries', color: '#F97316', type: 'expense' });
+    service.addCategory({ name: 'Salary', color: '#16A34A', type: 'income' });
+    service.addCategory({ name: 'Transport', color: '#D97706', type: 'expense' });
+
+    service.moveCategory(categoryId('Transport'), 'up');
+
+    expect(names()).toEqual(['Transport', 'Salary', 'Groceries']);
+    // The unrelated 'income' category was never touched.
+    expect(service.state()!.categories.find((c) => c.name === 'Salary')!.type).toBe('income');
+  });
+
+  it('is a no-op for an id that no longer exists', () => {
+    service.addCategory({ name: 'Groceries', color: '#F97316', type: 'expense' });
+    service.moveCategory('nonexistent-id', 'up');
+    expect(names()).toEqual(['Groceries']);
+  });
+});
