@@ -211,6 +211,39 @@
   margin-bottom: 0.25rem;
 }
 
+.month-end-note {
+  margin-top: -0.15rem;
+}
+
+/* ----- Repeats: "Every [N] [Day(s)/Week(s)/Month(s)/Year(s)]" ----------- */
+
+.interval-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.interval-word {
+  flex-shrink: 0;
+}
+
+/* Narrow and non-growing, unlike every other field here (which are all
+   `width: 100%` by default - see `styles.scss`) - a 1-3 digit interval
+   count doesn't need anywhere near a full field's width, and letting it
+   grow would push the frequency-unit tabs beside it uncomfortably far to
+   the right. */
+.interval-input {
+  width: 4.5rem;
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+.interval-row .type-tabs {
+  flex: 1;
+  min-width: 180px;
+}
+
 .icon-btn {
   background: none;
   border: none;

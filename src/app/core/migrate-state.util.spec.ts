@@ -104,9 +104,71 @@ describe('migrateState', () => {
     expect(r.lines.map((l) => l.id)).toEqual(['l1', 'l2']);
   });
 
+  it('backfills a legacy recurring item (saved before interval/anchorDay existed) with interval 1 and anchorDay from its nextDate', () => {
+    const result = migrateState({
+      recurringTransactions: [
+        {
+          id: 'r1',
+          name: 'Netflix',
+          amount: 45,
+          type: 'expense',
+          accountType: 'cash',
+          frequency: 'monthly',
+          nextDate: '2026-01-31',
+        },
+      ],
+    });
+    const r = result.recurringTransactions.find((x) => x.id === 'r1')!;
+    expect(r.interval).toBe(1);
+    expect(r.anchorDay).toBe(31);
+  });
+
+  it('normalizes an already-invalid stored interval (0, negative, fractional) back to 1, and keeps a valid stored anchorDay as-is', () => {
+    const result = migrateState({
+      recurringTransactions: [
+        { id: 'r1', name: 'A', frequency: 'monthly', nextDate: '2026-02-15', interval: 0 },
+        { id: 'r2', name: 'B', frequency: 'monthly', nextDate: '2026-02-15', interval: -3 },
+        { id: 'r3', name: 'C', frequency: 'monthly', nextDate: '2026-02-15', interval: 2.7 },
+        { id: 'r4', name: 'D', frequency: 'monthly', nextDate: '2026-02-15', interval: 3, anchorDay: 31 },
+      ],
+    });
+    expect(result.recurringTransactions.find((x) => x.id === 'r1')!.interval).toBe(1);
+    expect(result.recurringTransactions.find((x) => x.id === 'r2')!.interval).toBe(1);
+    expect(result.recurringTransactions.find((x) => x.id === 'r3')!.interval).toBe(2);
+    const d = result.recurringTransactions.find((x) => x.id === 'r4')!;
+    expect(d.interval).toBe(3);
+    // A stored anchorDay (31) is kept even though it no longer matches
+    // nextDate's own day (15) - it may have been set on a 31st before a
+    // short-month clamp moved nextDate itself, exactly the case anchorDay
+    // exists to remember.
+    expect(d.anchorDay).toBe(31);
+  });
+
+  it('carries budgets through unchanged, and defaults to an empty array for a file saved before Budgets existed', () => {
+    const withBudgets = migrateState({
+      budgets: [{ id: 'bg1', categoryId: 'cat1', amount: 500 }],
+    });
+    expect(withBudgets.budgets).toEqual([{ id: 'bg1', categoryId: 'cat1', amount: 500 }]);
+
+    const withoutBudgets = migrateState({ banks: [] });
+    expect(withoutBudgets.budgets).toEqual([]);
+  });
+
+  it('normalizes a garbage stored budget amount (missing/zero/negative) back to 0 rather than leaving it invalid', () => {
+    const result = migrateState({
+      budgets: [
+        { id: 'bg1', categoryId: 'cat1' },
+        { id: 'bg2', categoryId: 'cat2', amount: -50 },
+        { id: 'bg3', categoryId: 'cat3', amount: 0 },
+      ],
+    });
+    expect(result.budgets.map((b) => b.amount)).toEqual([0, 0, 0]);
+  });
+
   it('returns a valid empty state for garbage input', () => {
     const result = migrateState(null);
     expect(result.banks).toEqual([]);
     expect(result.settings.currency).toBe('myr');
+    expect(result.budgets).toEqual([]);
   });
 });

@@ -18,6 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/transactions', label: 'Transactions', icon: 'list' },
   { path: '/accounts', label: 'Accounts', icon: 'wallet' },
   { path: '/categories', label: 'Categories', icon: 'tag' },
+  { path: '/budget', label: 'Budget', icon: 'target' },
   { path: '/fixed-deposits', label: 'Fixed Deposits', icon: 'layers' },
   { path: '/investments', label: 'Investments', icon: 'trending-up' },
   { path: '/recurring', label: 'Recurring', icon: 'repeat' },

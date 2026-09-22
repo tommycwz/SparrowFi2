@@ -1087,3 +1087,68 @@ describe('StateService recurring transactions - pausing', () => {
     expect(recurring().nextDate).toBe('2026-02-01');
   });
 });
+
+describe('StateService budgets', () => {
+  let service: StateService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(StateService);
+    service.replaceState(createEmptyState());
+    service.addCategory({ name: 'Food', color: '#EF4444', type: 'expense' });
+    service.addCategory({ name: 'Transport', color: '#3B82F6', type: 'expense' });
+  });
+
+  function categoryId(name: string): string {
+    return service.state()!.categories.find((c) => c.name === name)!.id;
+  }
+
+  it('addBudget assigns an id and stores the category/amount as given', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 500 });
+
+    const budgets = service.state()!.budgets;
+    expect(budgets.length).toBe(1);
+    expect(budgets[0].id).toBeTruthy();
+    expect(budgets[0].categoryId).toBe(categoryId('Food'));
+    expect(budgets[0].amount).toBe(500);
+  });
+
+  it('addBudget can add more than one budget, one per category', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 500 });
+    service.addBudget({ categoryId: categoryId('Transport'), amount: 200 });
+
+    expect(service.state()!.budgets.length).toBe(2);
+  });
+
+  it('updateBudget changes the amount without touching the id or other budgets', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 500 });
+    service.addBudget({ categoryId: categoryId('Transport'), amount: 200 });
+    const food = service.state()!.budgets.find((b) => b.categoryId === categoryId('Food'))!;
+
+    service.updateBudget(food.id, { amount: 650 });
+
+    const updated = service.state()!.budgets.find((b) => b.id === food.id)!;
+    expect(updated.amount).toBe(650);
+    expect(updated.id).toBe(food.id);
+    expect(service.state()!.budgets.find((b) => b.categoryId === categoryId('Transport'))!.amount).toBe(200);
+  });
+
+  it('removeBudget removes only the targeted budget and leaves transactions untouched', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 500 });
+    service.addBudget({ categoryId: categoryId('Transport'), amount: 200 });
+    service.addTransaction({
+      date: '2026-02-01',
+      amount: 50,
+      type: 'expense',
+      accountType: 'cash',
+      categoryId: categoryId('Food'),
+    });
+    const food = service.state()!.budgets.find((b) => b.categoryId === categoryId('Food'))!;
+
+    service.removeBudget(food.id);
+
+    expect(service.state()!.budgets.length).toBe(1);
+    expect(service.state()!.budgets[0].categoryId).toBe(categoryId('Transport'));
+    expect(service.state()!.transactions.length).toBe(1);
+  });
+});

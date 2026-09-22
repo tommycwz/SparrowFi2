@@ -186,12 +186,25 @@ export interface Investment {
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 /** Display label for each recurring frequency - single source of truth for
- * the Recurring page's picker and card captions. */
+ * the Recurring page's picker and card captions. Used as-is only when
+ * `RecurringTransaction.interval` is 1 - see `recurrenceLabel` in
+ * `recurring.util.ts` for the "every N ___" phrasing above that. */
 export const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   daily: 'Daily',
   weekly: 'Weekly',
   monthly: 'Monthly',
   yearly: 'Yearly',
+};
+
+/** Singular/plural unit name for each frequency (`['Day', 'Days']`, etc.) -
+ * what the Add/Edit form's "Every [N] ___" picker labels its buttons with,
+ * and what `recurring.util.ts`'s `frequencyUnitLabel`/`recurrenceLabel`
+ * build sentences out of. */
+export const RECURRING_FREQUENCY_UNIT_LABELS: Record<RecurringFrequency, [string, string]> = {
+  daily: ['Day', 'Days'],
+  weekly: ['Week', 'Weeks'],
+  monthly: ['Month', 'Months'],
+  yearly: ['Year', 'Years'],
 };
 
 /** One transaction a `RecurringTransaction` template books every time it's
@@ -232,10 +245,30 @@ export interface RecurringTransaction {
   /** Always at least one line - see `RecurringLine`. */
   lines: RecurringLine[];
   frequency: RecurringFrequency;
+  /** How many `frequency` units apart occurrences are - e.g. `frequency:
+   * 'weekly'` with `interval: 2` is every 2 weeks (bi-weekly), `interval: 3`
+   * is every 3 weeks (tri-weekly), and so on for any frequency and any N.
+   * Always a positive integer once normalized (see `normalizeInterval` in
+   * `recurring.util.ts`, which every write path - `StateService.addRecurring`/
+   * `updateRecurring`, and legacy-file migration - runs it through).
+   * Absent means 1 (plain "every day/week/month/year", the only behavior
+   * that existed before this field did). */
+  interval?: number;
   /** The date this item is next due, and what gets stamped on every
    * transaction it creates when triggered - freely editable to any date,
    * not limited to "today" or a fixed day-of-month. */
   nextDate: string;
+  /** For `monthly`/`yearly` only - the day-of-month this item is meant to
+   * land on, independent of whatever `nextDate` currently holds. Always
+   * kept in sync with the day of `nextDate` as of the last time a person
+   * actually set it (`addRecurring`/`updateRecurring` recompute it from
+   * `nextDate` on every save - see `anchorDayOf`), which is what lets an
+   * item anchored to the 31st keep aiming for the 31st every month instead
+   * of drifting to whatever shorter day a previous month's clamp landed on
+   * (see `nextOccurrenceDate`'s doc comment for the full explanation).
+   * Ignored for `daily`/`weekly`. Absent is treated as the day of the
+   * current `nextDate`. */
+  anchorDay?: number;
   /** Freeform notes for the template as a whole, copied onto every
    * transaction every one of its lines creates. */
   notes?: string;
@@ -250,6 +283,28 @@ export interface RecurringTransaction {
   paused?: boolean;
 }
 
+/** A monthly spending cap for one category - "how much do I want to spend
+ * on X this month". Always targets a `type: 'expense'` category (see the
+ * Budget page's category picker, which only ever offers Expense
+ * categories - commitments are already fixed/known amounts, and
+ * income/transfer categories aren't spend a cap makes sense against).
+ * There's no "budget for March vs. April" - the same `amount` just applies
+ * fresh every calendar month; the Budget page compares it against that
+ * month's actual `type: 'expense'` transactions for the category (see
+ * `expenseTotalForCategory` in `budget.util.ts`). At most one `Budget` per
+ * `categoryId` in normal use - the Budget page's "Add" picker only offers
+ * categories that don't already have one, so a duplicate never gets
+ * created through the UI (`StateService.addBudget` itself doesn't enforce
+ * this - see its doc comment). */
+export interface Budget {
+  id: string;
+  categoryId: string;
+  /** The monthly cap - always saved as a positive number (the Budget
+   * page's form rejects zero/negative before it ever reaches
+   * `StateService`). */
+  amount: number;
+}
+
 export interface AppState {
   user: UserInfo;
   settings: Settings;
@@ -261,6 +316,7 @@ export interface AppState {
   fixedDeposits: FixedDeposit[];
   investments: Investment[];
   recurringTransactions: RecurringTransaction[];
+  budgets: Budget[];
 }
 
 export const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
@@ -327,5 +383,6 @@ export function createEmptyState(): AppState {
     fixedDeposits: [],
     investments: [],
     recurringTransactions: [],
+    budgets: [],
   };
 }

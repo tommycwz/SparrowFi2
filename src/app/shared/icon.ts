@@ -173,6 +173,9 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         @case ('play') {
           <path d="M5 3v18l15-9Z" />
         }
+        @case ('target') {
+          <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5.5" /><circle cx="12" cy="12" r="2" />
+        }
       }
     </svg>
   `,

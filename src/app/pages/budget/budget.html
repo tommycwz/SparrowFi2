@@ -1,0 +1,94 @@
+<div class="stack">
+  <div class="page-head">
+    <h1>Budget</h1>
+    <button type="button" class="btn btn-primary" (click)="openAdd()">
+      <sf-icon name="plus" [size]="16" /> Add Budget
+    </button>
+  </div>
+
+  @if (rows().length === 0) {
+    <div class="empty-state card">
+      <sf-icon name="target" [size]="28" />
+      <p>No budgets set yet.</p>
+      <p class="muted small">
+        Pick an Expense category and set a monthly spending cap - you'll see how this month's (and last month's)
+        actual spending on it stacks up here.
+      </p>
+    </div>
+  } @else {
+    <div class="budget-table-wrap">
+      <div class="budget-table">
+        <div class="budget-row budget-row-head">
+          <span>Category</span>
+          <span>This Month</span>
+          <span>Previous Month</span>
+          <span></span>
+        </div>
+
+        @for (row of rows(); track row.id) {
+          <div class="budget-row" [class.budget-row-over]="row.overBudget">
+            <div class="budget-cell budget-cell-category" (click)="openEdit(row)">
+              <span class="budget-dot" [style.background]="row.categoryColor"></span>
+              <div>
+                <div class="budget-cat-name">{{ row.categoryName }}</div>
+                <div class="muted small">Budget: {{ money(row.amount) }}</div>
+              </div>
+            </div>
+
+            <div class="budget-cell budget-cell-amount" (click)="openEdit(row)">
+              <span [class.budget-value-over]="row.overBudget">{{ money(row.thisMonthSpent) }}</span>
+              @if (row.overBudget) {
+                <span class="over-badge">Over</span>
+              }
+            </div>
+
+            <div class="budget-cell budget-cell-amount" (click)="openEdit(row)">
+              {{ money(row.lastMonthSpent) }}
+            </div>
+
+            <button type="button" class="icon-btn budget-delete" (click)="remove(row.id)" aria-label="Delete budget">
+              <sf-icon name="trash" [size]="14" />
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>
+
+@if (showModal()) {
+  <sf-modal [title]="editingId() ? 'Edit Budget' : 'Add Budget'" (close)="showModal.set(false)">
+    @if (editableCategoryOptions(form().categoryId).length === 0) {
+      <p class="muted small">
+        Every Expense category already has a budget. Add a new Expense category on the Categories page first, or
+        edit one of your existing budgets from the list.
+      </p>
+    } @else {
+      <div class="field-row">
+        <label>
+          Category
+          <select [ngModel]="form().categoryId" (ngModelChange)="form.update((f) => ({ ...f, categoryId: $event }))">
+            <option value="" disabled>Select a category</option>
+            @for (c of editableCategoryOptions(form().categoryId); track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </select>
+        </label>
+
+        <label>
+          Monthly Budget
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+            [ngModel]="form().amount"
+            (ngModelChange)="form.update((f) => ({ ...f, amount: $event }))"
+          />
+        </label>
+      </div>
+
+      <button type="button" class="btn btn-primary btn-block" (click)="save()">Save</button>
+    }
+  </sf-modal>
+}

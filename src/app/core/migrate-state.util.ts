@@ -3,6 +3,7 @@ import { ensureRequiredCategories } from './default-categories';
 import {
   AppState,
   Bank,
+  Budget,
   Card,
   Category,
   Currency,
@@ -13,6 +14,7 @@ import {
   Wallet,
   createEmptyState,
 } from './models';
+import { anchorDayOf, normalizeInterval } from './recurring.util';
 
 /**
  * Normalizes a raw, decoded JSON payload (any historical shape) into the
@@ -63,6 +65,9 @@ export function migrateState(raw: unknown): AppState {
     recurringTransactions: Array.isArray(src.recurringTransactions)
       ? src.recurringTransactions.map(normalizeRecurring)
       : [],
+    // Same reasoning again - Budgets is newer still, so no legacy file (and
+    // no pre-Budget cloud save) ever had this key either.
+    budgets: Array.isArray(src.budgets) ? src.budgets.map(normalizeBudget) : [],
   };
 
   // Legacy `creditCards[]` -> `cards[]`.
@@ -207,19 +212,35 @@ function normalizeRecurringLine(l: any): RecurringLine {
  * gained `lines[]`) carried its one and only line's fields directly on the
  * template itself - `amount`/`type`/`accountType`/`accountId`/`categoryId`.
  * That whole template becomes one line here, so a legacy file keeps
- * behaving exactly as it did before. */
+ * behaving exactly as it did before. Same idea for `interval`/`anchorDay`
+ * (added once this item already had a `nextDate` to derive a day from) -
+ * `normalizeInterval`/`anchorDayOf` give every legacy item the same
+ * definite, valid values `StateService.addRecurring`/`updateRecurring`
+ * would, rather than leaving them `undefined` for a file saved before
+ * either field existed. */
 function normalizeRecurring(r: any): RecurringTransaction {
   const lines: RecurringLine[] = Array.isArray(r.lines)
     ? r.lines.map(normalizeRecurringLine)
     : [normalizeRecurringLine(r)];
+  const nextDate = r.nextDate ?? new Date().toISOString().slice(0, 10);
   return {
     id: r.id ?? generateId(),
     name: r.name ?? 'Recurring',
     lines: lines.length > 0 ? lines : [normalizeRecurringLine({})],
     frequency: r.frequency ?? 'monthly',
-    nextDate: r.nextDate ?? new Date().toISOString().slice(0, 10),
+    interval: normalizeInterval(r.interval),
+    nextDate,
+    anchorDay: typeof r.anchorDay === 'number' ? r.anchorDay : anchorDayOf(nextDate),
     notes: r.notes,
     paused: r.paused === true,
+  };
+}
+
+function normalizeBudget(b: any): Budget {
+  return {
+    id: b.id ?? generateId(),
+    categoryId: b.categoryId ?? '',
+    amount: typeof b.amount === 'number' && b.amount > 0 ? b.amount : 0,
   };
 }
 

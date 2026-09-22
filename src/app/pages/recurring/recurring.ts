@@ -5,7 +5,6 @@ import { formatMoney } from '../../core/currency.util';
 import {
   AccountType,
   CURRENCIES,
-  RECURRING_FREQUENCY_LABELS,
   RecurringFrequency,
   RecurringLine,
   RecurringTransaction,
@@ -13,6 +12,7 @@ import {
   TransactionType,
 } from '../../core/models';
 import { formatAmountNumber } from '../../core/format.util';
+import { anchorDayOf, frequencyUnitLabel, recurrenceLabel } from '../../core/recurring.util';
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 
@@ -36,6 +36,13 @@ function blankLine(): RecurringLineForm {
 interface RecurringForm {
   name: string;
   frequency: RecurringFrequency;
+  /** "Every N ___" count, as a plain string like every other numeric form
+   * field here (see `RecurringLineForm.amount`) - parsed and validated only
+   * at save time. Blank/zero/negative/non-integer is treated as 1 by
+   * `unitLabel`/`recurrenceHint` while the form is open, and rejected by
+   * `save()` outright rather than silently coerced, so a mistyped value
+   * gets a chance to be noticed instead of quietly becoming "every 1". */
+  interval: string;
   nextDate: string;
   notes: string;
   /** Always at least one - see `RecurringTransaction.lines`. */
@@ -46,6 +53,7 @@ function blankForm(): RecurringForm {
   return {
     name: '',
     frequency: 'monthly',
+    interval: '1',
     nextDate: new Date().toISOString().slice(0, 10),
     notes: '',
     lines: [blankLine()],
@@ -111,10 +119,49 @@ export class RecurringPage {
 
   readonly typeLabels = TYPE_LABELS;
   readonly typeOptions: TransactionType[] = ['income', 'expense', 'commitment', 'others-in', 'others-out'];
-  readonly frequencyLabels = RECURRING_FREQUENCY_LABELS;
   readonly frequencyOptions: RecurringFrequency[] = ['daily', 'weekly', 'monthly', 'yearly'];
 
   constructor(readonly state: StateService) {}
+
+  /** "Every 2 Weeks", "Monthly", etc. - what a card's caption line shows in
+   * place of the plain `frequencyLabels[r.frequency]` it used before
+   * `interval` existed. */
+  frequencyLabel(r: RecurringTransaction): string {
+    return recurrenceLabel(r.frequency, r.interval);
+  }
+
+  /** Singular/plural unit name for one of the Add/Edit form's frequency
+   * buttons ("Day"/"Days", etc.), matching whatever `interval` is currently
+   * typed into the form - so the buttons read "2 [Weeks]" rather than
+   * "2 [Week]" as soon as the count goes above one. */
+  unitLabel(freq: RecurringFrequency): string {
+    return frequencyUnitLabel(freq, Number(this.form().interval));
+  }
+
+  /** Live "Every N ___" preview shown under the form's frequency picker
+   * once `interval` is anything other than 1 - purely a readability aid, so
+   * "3" + "Months" reads back as "Every 3 months" before the item is even
+   * saved. Hidden at `interval` 1 since the picker's own labels already say
+   * "Monthly" etc. clearly enough on their own. */
+  recurrenceHint(): string | null {
+    const f = this.form();
+    const interval = Number(f.interval);
+    return Number.isInteger(interval) && interval > 1 ? recurrenceLabel(f.frequency, interval) : null;
+  }
+
+  /** Explains the day-of-month clamp (see `nextOccurrenceDate`'s doc
+   * comment) right where it becomes relevant - a monthly/yearly item whose
+   * Next Date falls on the 29th-31st, a day not every month/February has.
+   * Null (and hidden) for every other combination - daily/weekly items
+   * don't have a "day of month" to clamp, and a day of 28 or less always
+   * exists no matter the month. */
+  monthEndNote(): string | null {
+    const f = this.form();
+    if (f.frequency !== 'monthly' && f.frequency !== 'yearly') return null;
+    const day = anchorDayOf(f.nextDate);
+    if (day <= 28) return null;
+    return `A month without day ${day} lands on its last day instead (the 30th, or the 28th/29th in February) — then back to day ${day} as soon as a month has it again.`;
+  }
 
   /** Soonest-due first, so what needs attention floats to the top - there's
    * no separate "active/past" split like Fixed Deposits or Investments,
@@ -359,6 +406,7 @@ export class RecurringPage {
     this.form.set({
       name: r.name,
       frequency: r.frequency,
+      interval: String(r.interval ?? 1),
       nextDate: r.nextDate,
       notes: r.notes ?? '',
       lines: r.lines.map((l) => ({
@@ -376,10 +424,20 @@ export class RecurringPage {
    * all-or-nothing rule the Transactions page's Batch grid uses, rather
    * than silently dropping a bad line: this is manual entry, not an
    * unpredictable external file, so a clear "fix this line" beats a
-   * transaction quietly vanishing. */
+   * transaction quietly vanishing. Same treatment for `interval` - it must
+   * parse to a positive whole number, or the save is rejected outright
+   * rather than silently falling back to 1. */
   save(): void {
     const f = this.form();
     if (!f.name.trim() || !f.nextDate || f.lines.length === 0) return;
+    // `f.interval` comes back from a `type="number"` control, which Angular's
+    // `NumberValueAccessor` already hands to `ngModelChange` as a real
+    // number (or `null` when empty) despite the form field being typed as
+    // `string` here (same convention `RecurringLineForm.amount` uses) -
+    // `Number(...)` is a no-op in that case and just parses the rare
+    // string value (e.g. a pasted "2.5") the same way.
+    const interval = Number(f.interval);
+    if (!Number.isInteger(interval) || interval < 1) return;
     const lines: Omit<RecurringLine, 'id'>[] = [];
     for (const l of f.lines) {
       const amount = parseFloat(l.amount);
@@ -395,6 +453,7 @@ export class RecurringPage {
     const payload = {
       name: f.name.trim(),
       frequency: f.frequency,
+      interval,
       nextDate: f.nextDate,
       notes: f.notes.trim() || undefined,
       lines,

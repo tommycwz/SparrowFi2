@@ -36,7 +36,7 @@
                 }
               </div>
               <div class="muted small">
-                {{ frequencyLabels[r.frequency] }} · {{ typeLabels[r.lines[0].type]
+                {{ frequencyLabel(r) }} · {{ typeLabels[r.lines[0].type]
                 }}{{ r.lines.length > 1 ? ' + ' + (r.lines.length - 1) + ' more' : '' }}
               </div>
             </div>
@@ -209,18 +209,32 @@
 
       <label>
         Repeats
-        <div class="type-tabs" role="group" aria-label="Frequency">
-          @for (freq of frequencyOptions; track freq) {
-            <button
-              type="button"
-              class="type-tab freq-tab"
-              [class.active]="form().frequency === freq"
-              (click)="form.update((f) => ({ ...f, frequency: freq }))"
-            >
-              {{ frequencyLabels[freq] }}
-            </button>
-          }
+        <div class="interval-row">
+          <span class="muted small interval-word">Every</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="interval-input"
+            [ngModel]="form().interval"
+            (ngModelChange)="form.update((f) => ({ ...f, interval: $event }))"
+          />
+          <div class="type-tabs" role="group" aria-label="Frequency unit">
+            @for (freq of frequencyOptions; track freq) {
+              <button
+                type="button"
+                class="type-tab freq-tab"
+                [class.active]="form().frequency === freq"
+                (click)="form.update((f) => ({ ...f, frequency: freq }))"
+              >
+                {{ unitLabel(freq) }}
+              </button>
+            }
+          </div>
         </div>
+        @if (recurrenceHint(); as hint) {
+          <span class="muted small">{{ hint }}</span>
+        }
       </label>
 
       <label>
@@ -231,6 +245,9 @@
           (ngModelChange)="form.update((f) => ({ ...f, nextDate: $event }))"
         />
       </label>
+      @if (monthEndNote(); as note) {
+        <p class="muted small month-end-note">{{ note }}</p>
+      }
 
       <label>
         Notes

@@ -2,6 +2,7 @@ import { Injectable, computed, signal } from '@angular/core';
 import {
   AppState,
   Bank,
+  Budget,
   Card,
   Category,
   FixedDeposit,
@@ -16,7 +17,7 @@ import { CloudDataService } from './cloud-data.service';
 import { generateId } from './id.util';
 import { createDefaultCategories, ensureRequiredCategories } from './default-categories';
 import { fdGainValue, fdMaturityDate } from './fixed-deposit.util';
-import { nextOccurrenceDate } from './recurring.util';
+import { anchorDayOf, nextOccurrenceDate, normalizeInterval } from './recurring.util';
 
 export interface AccountBalance {
   kind: 'bank' | 'wallet' | 'card' | 'bucket';
@@ -249,6 +250,9 @@ export class StateService {
             // every `s.recurringTransactions.___` call throughout this
             // service would throw the moment that account's data loads.
             recurringTransactions: loaded.recurringTransactions ?? [],
+            // Same reasoning again - Budgets is newer still, so an account
+            // saved before it existed has no `budgets` key at all either.
+            budgets: loaded.budgets ?? [],
           }
         : { ...createEmptyState(), categories: createDefaultCategories() },
     );
@@ -938,13 +942,25 @@ export class StateService {
   /** `r.lines` come in without ids (the caller - the Recurring page's form
    * - doesn't assign them) - ids are generated here, same as the
    * template's own id, keeping id generation inside `StateService` rather
-   * than scattered across page components. */
-  addRecurring(r: Omit<RecurringTransaction, 'id' | 'lines'> & { lines: Omit<RecurringLine, 'id'>[] }): void {
+   * than scattered across page components. `interval` is normalized
+   * (`normalizeInterval`) and `anchorDay` is (re)derived from `nextDate`
+   * (`anchorDayOf`) here too, rather than trusted from the caller, so every
+   * template - including one built by a caller that predates either field -
+   * always ends up with both in a definite, valid state. */
+  addRecurring(
+    r: Omit<RecurringTransaction, 'id' | 'lines' | 'anchorDay'> & { lines: Omit<RecurringLine, 'id'>[] },
+  ): void {
     this.updateState((s) => ({
       ...s,
       recurringTransactions: [
         ...s.recurringTransactions,
-        { ...r, id: generateId(), lines: r.lines.map((line) => ({ ...line, id: generateId() })) },
+        {
+          ...r,
+          id: generateId(),
+          interval: normalizeInterval(r.interval),
+          anchorDay: anchorDayOf(r.nextDate),
+          lines: r.lines.map((line) => ({ ...line, id: generateId() })),
+        },
       ],
     }));
   }
@@ -953,10 +969,16 @@ export class StateService {
    * (the Recurring page's Add/Edit form always saves the complete list
    * rather than patching individual lines) - fresh ids are generated for
    * it the same way `addRecurring` does. Omitting `lines` from `patch`
-   * leaves the existing lines untouched. */
+   * leaves the existing lines untouched. Same treatment as `addRecurring`
+   * for `interval` (normalized when the patch touches it, otherwise left
+   * as-is) and `anchorDay` (re-derived from `patch.nextDate` whenever the
+   * patch actually sets one - i.e. every real save from the Add/Edit form -
+   * so an item anchored to the 31st keeps aiming for the 31st even after a
+   * previous auto-advance clamped it down to a shorter month; see
+   * `anchorDay`'s doc comment on the interface). */
   updateRecurring(
     id: string,
-    patch: Partial<Omit<RecurringTransaction, 'id' | 'lines'>> & { lines?: Omit<RecurringLine, 'id'>[] },
+    patch: Partial<Omit<RecurringTransaction, 'id' | 'lines' | 'anchorDay'>> & { lines?: Omit<RecurringLine, 'id'>[] },
   ): void {
     this.updateState((s) => ({
       ...s,
@@ -966,6 +988,8 @@ export class StateService {
               ...r,
               ...patch,
               id,
+              interval: patch.interval !== undefined ? normalizeInterval(patch.interval) : r.interval,
+              anchorDay: patch.nextDate ? anchorDayOf(patch.nextDate) : r.anchorDay,
               lines: patch.lines ? patch.lines.map((line) => ({ ...line, id: generateId() })) : r.lines,
             }
           : r,
@@ -1011,7 +1035,9 @@ export class StateService {
         ...s,
         transactions: [...s.transactions, ...this.recurringLineTransactions(r, r.nextDate)],
         recurringTransactions: s.recurringTransactions.map((x) =>
-          x.id === id ? { ...x, nextDate: nextOccurrenceDate(x.nextDate, x.frequency) } : x,
+          x.id === id
+            ? { ...x, nextDate: nextOccurrenceDate(x.nextDate, x.frequency, x.interval, x.anchorDay) }
+            : x,
         ),
       };
     });
@@ -1037,7 +1063,7 @@ export class StateService {
         transactions: [...s.transactions, ...newTransactions],
         recurringTransactions: s.recurringTransactions.map((r) => ({
           ...r,
-          nextDate: nextOccurrenceDate(r.nextDate, r.frequency),
+          nextDate: nextOccurrenceDate(r.nextDate, r.frequency, r.interval, r.anchorDay),
         })),
       };
     });
@@ -1072,6 +1098,41 @@ export class StateService {
    * list, and they all carry the same `recurringId` besides. */
   private recurringNotes(r: RecurringTransaction): string {
     return r.notes ? `${r.name} - ${r.notes}` : r.name;
+  }
+
+  // ----- Budgets -----------------------------------------------------------
+  // A monthly spending cap per category (see `Budget`'s doc comment) - the
+  // Budget page reads `budgets` alongside `transactions` itself to work out
+  // actual spend, so there's nothing here that mirrors
+  // `triggerRecurring`/`triggerAllRecurring`; a Budget doesn't create or
+  // touch any transaction on its own.
+
+  /** Doesn't itself guard against a second `Budget` for the same
+   * `categoryId` - the Budget page's "Add" picker only offers categories
+   * that don't already have one, so a duplicate never gets created through
+   * normal use (same trust-the-caller approach `addCategory` takes). */
+  addBudget(b: Omit<Budget, 'id'>): void {
+    this.updateState((s) => ({
+      ...s,
+      budgets: [...s.budgets, { ...b, id: generateId() }],
+    }));
+  }
+
+  updateBudget(id: string, patch: Partial<Omit<Budget, 'id'>>): void {
+    this.updateState((s) => ({
+      ...s,
+      budgets: s.budgets.map((b) => (b.id === id ? { ...b, ...patch, id } : b)),
+    }));
+  }
+
+  /** Deleting a budget only removes the cap itself - same as
+   * `removeRecurring`, it never touches any transaction already recorded
+   * against that category. */
+  removeBudget(id: string): void {
+    this.updateState((s) => ({
+      ...s,
+      budgets: s.budgets.filter((b) => b.id !== id),
+    }));
   }
 
   private requireState(): AppState {
