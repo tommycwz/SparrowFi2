@@ -144,11 +144,17 @@ describe('migrateState', () => {
     expect(d.anchorDay).toBe(31);
   });
 
-  it('carries budgets through unchanged, and defaults to an empty array for a file saved before Budgets existed', () => {
+  it('carries budgets through (backfilling period to monthly), and defaults to an empty array for a file saved before Budgets existed', () => {
     const withBudgets = migrateState({
       budgets: [{ id: 'bg1', categoryId: 'cat1', amount: 500 }],
     });
-    expect(withBudgets.budgets).toEqual([{ id: 'bg1', categoryId: 'cat1', amount: 500 }]);
+    // `period` didn't exist when this test was first written (budgets were
+    // saved as just `{ id, categoryId, amount }`) - `normalizeBudget`
+    // backfills it to 'monthly' the same way every other legacy/missing
+    // field on a Budget is backfilled, so a pre-period budget keeps
+    // behaving exactly as it did (see the dedicated period-backfill test
+    // below for the other three periods).
+    expect(withBudgets.budgets).toEqual([{ id: 'bg1', categoryId: 'cat1', amount: 500, period: 'monthly' }]);
 
     const withoutBudgets = migrateState({ banks: [] });
     expect(withoutBudgets.budgets).toEqual([]);
