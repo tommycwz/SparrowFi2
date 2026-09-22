@@ -653,10 +653,10 @@
 }
 
 /* ----- Budget Analysis card (Zone 3) ---------------------------------------- */
-
-.budget-analysis-head {
-  margin-bottom: 0.6rem;
-}
+/* Reuses `.fd-ledger`/`.fd-row` (row list + divider) and `.legend-row`/`.dot`/
+   `.amt` (dot + name + right-aligned amount) from elsewhere in this file
+   instead of duplicating their layout - only what's actually new to this
+   card (the summary strip and the progress bar) gets its own rules. */
 
 .budget-summary-row {
   display: flex;
@@ -665,56 +665,6 @@
   gap: 0.5rem;
   flex-wrap: wrap;
   margin-bottom: 0.85rem;
-}
-
-.budget-summary-figure {
-  font-size: 0.85rem;
-}
-
-.budget-summary-value {
-  font-size: 1rem;
-  font-weight: 800;
-}
-
-.budget-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.budget-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.budget-row-head {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.budget-row-head .dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.budget-row-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.budget-row-amt {
-  margin-left: auto;
-  font-weight: 700;
-  font-size: 0.78rem;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
 .budget-bar-track {

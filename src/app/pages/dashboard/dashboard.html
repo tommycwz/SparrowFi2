@@ -326,7 +326,7 @@
       </div>
 
       <div class="card pulse-card pulse-card-wide budget-analysis-card">
-        <div class="section-head budget-analysis-head">
+        <div class="section-head">
           <h3 class="widget-title"
             >Budget Analysis<sf-info-tip
               label="Budget Analysis"
@@ -343,7 +343,7 @@
         } @else {
           <div class="budget-summary-row">
             <div class="budget-summary-figure">
-              <span class="budget-summary-value">{{ money(budgetAnalysis().totalSpent) }}</span>
+              <span style="font-size: 1rem; font-weight: 800">{{ money(budgetAnalysis().totalSpent) }}</span>
               <span class="muted"> of {{ money(budgetAnalysis().totalCap) }} this month</span>
             </div>
             @if (budgetAnalysis().overBudgetCount > 0) {
@@ -352,18 +352,16 @@
               >
             }
           </div>
-          <div class="budget-rows">
+          <div class="fd-ledger">
             @for (row of budgetAnalysisTopRows(); track row.id) {
-              <div class="budget-row">
-                <div class="budget-row-head">
+              <div class="fd-row">
+                <div class="legend-row">
                   <span class="dot" [style.background]="row.categoryColor"></span>
-                  <span class="budget-row-name">{{ row.categoryName }}</span>
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ row.categoryName }}</span>
                   @if (row.overBudget) {
                     <span class="chip chip-bad">Over</span>
                   }
-                  <span class="budget-row-amt amt"
-                    >{{ money(row.spent) }} / {{ money(row.capMonthly) }}</span
-                  >
+                  <span class="amt">{{ money(row.spent) }} / {{ money(row.capMonthly) }}</span>
                 </div>
                 <div class="budget-bar-track">
                   <div

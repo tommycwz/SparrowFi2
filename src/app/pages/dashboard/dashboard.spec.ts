@@ -805,7 +805,7 @@ describe('DashboardPage', () => {
       fixture.detectChanges();
       let el = fixture.nativeElement as HTMLElement;
       expect(el.querySelector('.budget-analysis-card')?.textContent).toContain('No budgets set up yet.');
-      expect(el.querySelectorAll('.budget-row').length).toBe(0);
+      expect(el.querySelectorAll('.budget-analysis-card .fd-row').length).toBe(0);
 
       state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
       const catId = state.state()!.categories[0].id;
@@ -814,7 +814,7 @@ describe('DashboardPage', () => {
       fixture.detectChanges();
       el = fixture.nativeElement as HTMLElement;
 
-      const row = el.querySelector('.budget-row') as HTMLElement;
+      const row = el.querySelector('.budget-analysis-card .fd-row') as HTMLElement;
       expect(row.textContent).toContain('Groceries');
       expect(row.textContent).toContain('Over');
       const fill = row.querySelector('.budget-bar-fill') as HTMLElement;
