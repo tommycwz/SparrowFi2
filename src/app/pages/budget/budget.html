@@ -6,22 +6,27 @@
     </button>
   </div>
 
+  <div class="period-tabs" role="group" aria-label="Budget period view">
+    @for (p of periodOptions; track p) {
+      <button type="button" class="period-tab" [class.active]="tab() === p" (click)="tab.set(p)">
+        {{ periodLabels[p] }}
+      </button>
+    }
+  </div>
+
   @if (rows().length === 0) {
     <div class="empty-state card">
       <sf-icon name="target" [size]="28" />
       <p>No budgets set yet.</p>
-      <p class="muted small">
-        Pick an Expense category and set a monthly spending cap - you'll see how this month's (and last month's)
-        actual spending on it stacks up here.
-      </p>
+      <p class="muted small">{{ emptyStateHint() }}</p>
     </div>
   } @else {
     <div class="budget-table-wrap">
       <div class="budget-table">
         <div class="budget-row budget-row-head">
           <span>Category</span>
-          <span>This Month</span>
-          <span>Previous Month</span>
+          <span>{{ columnLabels().current }}</span>
+          <span>{{ columnLabels().previous }}</span>
           <span></span>
         </div>
 
@@ -31,19 +36,19 @@
               <span class="budget-dot" [style.background]="row.categoryColor"></span>
               <div>
                 <div class="budget-cat-name">{{ row.categoryName }}</div>
-                <div class="muted small">Budget: {{ money(row.amount) }}</div>
+                <div class="muted small">Budget: {{ money(row.displayAmount) }}</div>
               </div>
             </div>
 
             <div class="budget-cell budget-cell-amount" (click)="openEdit(row)">
-              <span [class.budget-value-over]="row.overBudget">{{ money(row.thisMonthSpent) }}</span>
+              <span [class.budget-value-over]="row.overBudget">{{ money(row.currentSpent) }}</span>
               @if (row.overBudget) {
                 <span class="over-badge">Over</span>
               }
             </div>
 
             <div class="budget-cell budget-cell-amount" (click)="openEdit(row)">
-              {{ money(row.lastMonthSpent) }}
+              {{ money(row.previousSpent) }}
             </div>
 
             <button type="button" class="icon-btn budget-delete" (click)="remove(row.id)" aria-label="Delete budget">
@@ -58,6 +63,19 @@
 
 @if (showModal()) {
   <sf-modal [title]="editingId() ? 'Edit Budget' : 'Add Budget'" (close)="showModal.set(false)">
+    <div class="period-tabs modal-period-tabs" role="group" aria-label="Budget period">
+      @for (p of periodOptions; track p) {
+        <button
+          type="button"
+          class="period-tab"
+          [class.active]="form().period === p"
+          (click)="setFormPeriod(p)"
+        >
+          {{ periodLabels[p] }}
+        </button>
+      }
+    </div>
+
     @if (editableCategoryOptions(form().categoryId).length === 0) {
       <p class="muted small">
         Every Expense category already has a budget. Add a new Expense category on the Categories page first, or
@@ -76,7 +94,7 @@
         </label>
 
         <label>
-          Monthly Budget
+          {{ periodLabels[form().period] }} Budget Amount
           <input
             type="number"
             min="0"

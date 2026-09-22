@@ -283,27 +283,56 @@ export interface RecurringTransaction {
   paused?: boolean;
 }
 
-/** A monthly spending cap for one category - "how much do I want to spend
- * on X this month". Always targets a `type: 'expense'` category (see the
- * Budget page's category picker, which only ever offers Expense
- * categories - commitments are already fixed/known amounts, and
- * income/transfer categories aren't spend a cap makes sense against).
- * There's no "budget for March vs. April" - the same `amount` just applies
- * fresh every calendar month; the Budget page compares it against that
- * month's actual `type: 'expense'` transactions for the category (see
- * `expenseTotalForCategory` in `budget.util.ts`). At most one `Budget` per
- * `categoryId` in normal use - the Budget page's "Add" picker only offers
- * categories that don't already have one, so a duplicate never gets
- * created through the UI (`StateService.addBudget` itself doesn't enforce
- * this - see its doc comment). */
+/** A single recurring spending cap on one `type: 'expense'` category -
+ * "how much do I want to spend on X". Commitments are already fixed/known
+ * amounts, and income/transfer categories aren't spend a cap makes sense
+ * against, so the Budget page's category picker only ever offers Expense
+ * categories. At most one `Budget` per `categoryId` - the Budget page's
+ * "Add" picker enforces that by only offering categories that don't
+ * already have one at all (`StateService.addBudget` itself doesn't enforce
+ * this - see its doc comment).
+ *
+ * `amount`/`period` are just *how the cap was entered* - whichever of
+ * Daily/Weekly/Monthly/Yearly was easiest to think in at the time (a
+ * yearly insurance premium, a monthly subscription, a weekly allowance, a
+ * daily coffee budget) - not a commitment to that cadence forever. There's
+ * no separate stored value per period: the Budget page's page-level period
+ * tab re-expresses this same cap in whichever period is currently being
+ * viewed via `convertBudgetAmount` (`budget.util.ts`), comparing it against
+ * that period's actual `type: 'expense'` transactions for the category
+ * (`periodRange` + `expenseTotalForCategoryInRange`, also in
+ * `budget.util.ts`). Editing a budget can freely change `period` too (e.g.
+ * switching a cap from "entered monthly" to "entered yearly") since it's
+ * still the same one cap either way, just relabeled - unlike the
+ * cross-*category* uniqueness rule above, there's no collision to worry
+ * about from changing it. */
 export interface Budget {
   id: string;
   categoryId: string;
-  /** The monthly cap - always saved as a positive number (the Budget
-   * page's form rejects zero/negative before it ever reaches
-   * `StateService`). */
+  /** Absent means `'monthly'` - the cadence every budget implicitly used
+   * before Daily/Weekly/Yearly entry existed, so a budget saved before then
+   * keeps behaving exactly as it did (see `normalizeBudgetPeriod` in
+   * `budget.util.ts`, which every write path runs through). */
+  period?: BudgetPeriod;
+  /** The cap, in `period` units - always saved as a positive number (the
+   * Budget page's form rejects zero/negative before it ever reaches
+   * `StateService`). Convert to another period's equivalent with
+   * `convertBudgetAmount` rather than reading this directly whenever the
+   * *displayed* period might differ from `period` itself. */
   amount: number;
 }
+
+export type BudgetPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+/** Display label for each `BudgetPeriod` - single source of truth for the
+ * Budget page's period tabs (both the page-level view switch and the
+ * Add/Edit form's picker). */
+export const BUDGET_PERIOD_LABELS: Record<BudgetPeriod, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
 
 export interface AppState {
   user: UserInfo;

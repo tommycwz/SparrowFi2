@@ -23,6 +23,58 @@
   font-size: 0.75rem;
 }
 
+/* ----- Period tabs (Daily / Weekly / Monthly / Yearly) -------------------
+   Every budget is really just one cap, entered in whichever period was
+   easiest (see `Budget`'s doc comment in `models.ts`) - one set of these
+   tabs picks which period the whole page's table is currently converted
+   into, and the same pattern is reused inside the Add/Edit modal to pick
+   which period a cap is being typed in. Same visual language as the
+   Recurring page's own type/frequency tabs (`.type-tab`/`.freq-tab` in
+   `recurring.scss`), kept as a page-local copy here rather than a shared
+   class - Angular's view encapsulation means every page's SCSS is already
+   its own separate world (see this file's other rules), and there's no
+   per-option accent color to key off the way `.type-tab` does, so this
+   just falls back to the app's own `--accent` when active. Four tabs (up
+   from two) needs a narrower `min-width` than that pattern otherwise uses,
+   so a typical phone width can still fit all four on one row rather than
+   wrapping to two. */
+
+.period-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.period-tab {
+  flex: 1;
+  min-width: 68px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.period-tab:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.period-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.modal-period-tabs {
+  margin-bottom: 0.75rem;
+}
+
 /* ----- Budget table ------------------------------------------------------
    A literal 3-column table (Category | This Month | Previous Month), plus a
    trailing narrow icon-only column for Delete - same "one grid column
@@ -149,5 +201,11 @@
     grid-template-columns: minmax(120px, 1.4fr) minmax(76px, 1fr) minmax(76px, 1fr) 24px;
     gap: 0.5rem;
     padding: 0.7rem 0.75rem;
+  }
+
+  .period-tab {
+    min-width: 0;
+    padding: 0.5rem 0.2rem;
+    font-size: 0.75rem;
   }
 }

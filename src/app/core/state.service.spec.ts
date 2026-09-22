@@ -1151,4 +1151,31 @@ describe('StateService budgets', () => {
     expect(service.state()!.budgets[0].categoryId).toBe(categoryId('Transport'));
     expect(service.state()!.transactions.length).toBe(1);
   });
+
+  it('addBudget defaults an omitted period to monthly', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 500 });
+    expect(service.state()!.budgets[0].period).toBe('monthly');
+  });
+
+  it('addBudget accepts any of the four real periods, and normalizes anything else back to monthly', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 5, period: 'daily' });
+    expect(service.state()!.budgets[0].period).toBe('daily');
+
+    service.addBudget({ categoryId: categoryId('Transport'), amount: 500, period: 'fortnightly' as any });
+    expect(service.state()!.budgets.find((b) => b.categoryId === categoryId('Transport'))!.period).toBe('monthly');
+  });
+
+  it('updateBudget normalizes a period patch (including to/from the newer daily/yearly periods), and leaves period untouched when the patch omits it', () => {
+    service.addBudget({ categoryId: categoryId('Food'), amount: 500, period: 'weekly' });
+    const food = service.state()!.budgets[0];
+
+    service.updateBudget(food.id, { amount: 600 });
+    expect(service.state()!.budgets.find((b) => b.id === food.id)!.period).toBe('weekly');
+
+    service.updateBudget(food.id, { period: 'yearly' });
+    expect(service.state()!.budgets.find((b) => b.id === food.id)!.period).toBe('yearly');
+
+    service.updateBudget(food.id, { period: 'daily' });
+    expect(service.state()!.budgets.find((b) => b.id === food.id)!.period).toBe('daily');
+  });
 });

@@ -18,6 +18,7 @@ import { generateId } from './id.util';
 import { createDefaultCategories, ensureRequiredCategories } from './default-categories';
 import { fdGainValue, fdMaturityDate } from './fixed-deposit.util';
 import { anchorDayOf, nextOccurrenceDate, normalizeInterval } from './recurring.util';
+import { normalizeBudgetPeriod } from './budget.util';
 
 export interface AccountBalance {
   kind: 'bank' | 'wallet' | 'card' | 'bucket';
@@ -1101,27 +1102,44 @@ export class StateService {
   }
 
   // ----- Budgets -----------------------------------------------------------
-  // A monthly spending cap per category (see `Budget`'s doc comment) - the
-  // Budget page reads `budgets` alongside `transactions` itself to work out
-  // actual spend, so there's nothing here that mirrors
-  // `triggerRecurring`/`triggerAllRecurring`; a Budget doesn't create or
-  // touch any transaction on its own.
+  // A single spending cap per category, entered in whichever period was
+  // easiest at the time (see `Budget`'s doc comment) - the Budget page reads
+  // `budgets` alongside `transactions` itself to work out actual spend, so
+  // there's nothing here that mirrors `triggerRecurring`/`triggerAllRecurring`;
+  // a Budget doesn't create or touch any transaction on its own.
 
   /** Doesn't itself guard against a second `Budget` for the same
    * `categoryId` - the Budget page's "Add" picker only offers categories
    * that don't already have one, so a duplicate never gets created through
-   * normal use (same trust-the-caller approach `addCategory` takes). */
+   * normal use (same trust-the-caller approach `addCategory` takes).
+   * `period` is normalized (`normalizeBudgetPeriod`) here rather than
+   * trusted from the caller, same treatment `addRecurring` gives `interval`
+   * - so a budget always ends up with a definite, valid `period` regardless
+   * of what (if anything) the caller passed. */
   addBudget(b: Omit<Budget, 'id'>): void {
     this.updateState((s) => ({
       ...s,
-      budgets: [...s.budgets, { ...b, id: generateId() }],
+      budgets: [...s.budgets, { ...b, period: normalizeBudgetPeriod(b.period), id: generateId() }],
     }));
   }
 
+  /** Same `period` normalization as `addBudget`, but only when the patch
+   * actually touches it - omitting `period` from `patch` leaves the
+   * existing budget's period untouched, same as `updateRecurring` leaves
+   * `interval` alone when the patch doesn't set one. */
   updateBudget(id: string, patch: Partial<Omit<Budget, 'id'>>): void {
     this.updateState((s) => ({
       ...s,
-      budgets: s.budgets.map((b) => (b.id === id ? { ...b, ...patch, id } : b)),
+      budgets: s.budgets.map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              ...patch,
+              id,
+              period: patch.period !== undefined ? normalizeBudgetPeriod(patch.period) : b.period,
+            }
+          : b,
+      ),
     }));
   }
 

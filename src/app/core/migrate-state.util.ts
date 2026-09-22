@@ -15,6 +15,7 @@ import {
   createEmptyState,
 } from './models';
 import { anchorDayOf, normalizeInterval } from './recurring.util';
+import { normalizeBudgetPeriod } from './budget.util';
 
 /**
  * Normalizes a raw, decoded JSON payload (any historical shape) into the
@@ -240,6 +241,11 @@ function normalizeBudget(b: any): Budget {
   return {
     id: b.id ?? generateId(),
     categoryId: b.categoryId ?? '',
+    // Backfills the period for a budget saved before Daily/Weekly/Yearly
+    // entry existed (or anything else invalid) to 'monthly' - the cadence
+    // every budget implicitly used before then - same as every live write
+    // path (`StateService.addBudget`/`updateBudget`) runs through.
+    period: normalizeBudgetPeriod(b.period),
     amount: typeof b.amount === 'number' && b.amount > 0 ? b.amount : 0,
   };
 }

@@ -154,6 +154,23 @@ describe('migrateState', () => {
     expect(withoutBudgets.budgets).toEqual([]);
   });
 
+  it('backfills a missing/invalid budget period to monthly, and keeps any explicit real period as-is', () => {
+    const result = migrateState({
+      budgets: [
+        { id: 'bg1', categoryId: 'cat1', amount: 100 },
+        { id: 'bg2', categoryId: 'cat2', amount: 50, period: 'weekly' },
+        { id: 'bg3', categoryId: 'cat3', amount: 50, period: 'daily' },
+        { id: 'bg4', categoryId: 'cat4', amount: 500, period: 'yearly' },
+        { id: 'bg5', categoryId: 'cat5', amount: 50, period: 'fortnightly' },
+      ],
+    });
+    expect(result.budgets.find((b) => b.id === 'bg1')!.period).toBe('monthly');
+    expect(result.budgets.find((b) => b.id === 'bg2')!.period).toBe('weekly');
+    expect(result.budgets.find((b) => b.id === 'bg3')!.period).toBe('daily');
+    expect(result.budgets.find((b) => b.id === 'bg4')!.period).toBe('yearly');
+    expect(result.budgets.find((b) => b.id === 'bg5')!.period).toBe('monthly');
+  });
+
   it('normalizes a garbage stored budget amount (missing/zero/negative) back to 0 rather than leaving it invalid', () => {
     const result = migrateState({
       budgets: [
