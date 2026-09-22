@@ -324,6 +324,59 @@
           </div>
         }
       </div>
+
+      <div class="card pulse-card pulse-card-wide budget-analysis-card">
+        <div class="section-head budget-analysis-head">
+          <h3 class="widget-title"
+            >Budget Analysis<sf-info-tip
+              label="Budget Analysis"
+              text="Each budget's cap, converted to a monthly figure, against this month's actual Expense spend on that category."
+          /></h3>
+          <a routerLink="/budget" class="muted link">See all</a>
+        </div>
+        @if (!budgetAnalysis().hasBudgets) {
+          <div class="empty-state">
+            <sf-icon name="target" [size]="28" />
+            <p>No budgets set up yet.</p>
+            <a routerLink="/budget" class="link">Set up a budget</a>
+          </div>
+        } @else {
+          <div class="budget-summary-row">
+            <div class="budget-summary-figure">
+              <span class="budget-summary-value">{{ money(budgetAnalysis().totalSpent) }}</span>
+              <span class="muted"> of {{ money(budgetAnalysis().totalCap) }} this month</span>
+            </div>
+            @if (budgetAnalysis().overBudgetCount > 0) {
+              <span class="chip chip-bad"
+                >{{ budgetAnalysis().overBudgetCount }} over budget</span
+              >
+            }
+          </div>
+          <div class="budget-rows">
+            @for (row of budgetAnalysisTopRows(); track row.id) {
+              <div class="budget-row">
+                <div class="budget-row-head">
+                  <span class="dot" [style.background]="row.categoryColor"></span>
+                  <span class="budget-row-name">{{ row.categoryName }}</span>
+                  @if (row.overBudget) {
+                    <span class="chip chip-bad">Over</span>
+                  }
+                  <span class="budget-row-amt amt"
+                    >{{ money(row.spent) }} / {{ money(row.capMonthly) }}</span
+                  >
+                </div>
+                <div class="budget-bar-track">
+                  <div
+                    class="budget-bar-fill"
+                    [class.over]="row.overBudget"
+                    [style.width.%]="capPercent(row.pctUsed)"
+                  ></div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
     </div>
   </section>
 

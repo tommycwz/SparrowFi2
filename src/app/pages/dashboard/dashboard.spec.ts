@@ -436,6 +436,84 @@ describe('DashboardPage', () => {
     });
   });
 
+  describe('budgetAnalysis / budgetAnalysisTopRows / capPercent', () => {
+    it('has no budgets when none are set up', () => {
+      const analysis = page.budgetAnalysis();
+      expect(analysis.hasBudgets).toBe(false);
+      expect(analysis.rows).toEqual([]);
+      expect(page.budgetAnalysisTopRows()).toEqual([]);
+    });
+
+    it("converts each budget's cap to a monthly figure and totals this month's actual spend against it", () => {
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      const catId = state.state()!.categories[0].id;
+      // A yearly cap of 1200 -> 100/month.
+      state.addBudget({ categoryId: catId, period: 'yearly', amount: 1200 });
+      state.addTransaction({ date: TODAY, amount: 40, type: 'expense', accountType: 'cash', categoryId: catId });
+      // Not counted: a commitment this month, and an expense from a prior month.
+      state.addTransaction({ date: TODAY, amount: 999, type: 'commitment', accountType: 'cash', categoryId: catId });
+      state.addTransaction({ date: monthsAgoDate(1), amount: 999, type: 'expense', accountType: 'cash', categoryId: catId });
+
+      const analysis = page.budgetAnalysis();
+      expect(analysis.hasBudgets).toBe(true);
+      expect(analysis.rows.length).toBe(1);
+      const [row] = analysis.rows;
+      expect(row.categoryName).toBe('Groceries');
+      expect(row.capMonthly).toBeCloseTo(100, 5);
+      expect(row.spent).toBe(40);
+      expect(row.pctUsed).toBeCloseTo(40, 5);
+      expect(row.overBudget).toBe(false);
+      expect(analysis.totalCap).toBeCloseTo(100, 5);
+      expect(analysis.totalSpent).toBe(40);
+      expect(analysis.overBudgetCount).toBe(0);
+    });
+
+    it('flags a category as over budget once spend passes its monthly cap, and sorts worst-tracking first', () => {
+      state.addCategory({ name: 'Dining', color: '#111', type: 'expense' });
+      state.addCategory({ name: 'Transport', color: '#222', type: 'expense' });
+      const [dining, transport] = state.state()!.categories;
+      state.addBudget({ categoryId: dining.id, period: 'monthly', amount: 100 });
+      state.addBudget({ categoryId: transport.id, period: 'monthly', amount: 100 });
+      state.addTransaction({ date: TODAY, amount: 150, type: 'expense', accountType: 'cash', categoryId: dining.id });
+      state.addTransaction({ date: TODAY, amount: 20, type: 'expense', accountType: 'cash', categoryId: transport.id });
+
+      const analysis = page.budgetAnalysis();
+      expect(analysis.overBudgetCount).toBe(1);
+      expect(analysis.rows[0].categoryName).toBe('Dining');
+      expect(analysis.rows[0].overBudget).toBe(true);
+      expect(analysis.rows[1].categoryName).toBe('Transport');
+      expect(analysis.rows[1].overBudget).toBe(false);
+    });
+
+    it('drops a budget whose category no longer exists rather than throwing', () => {
+      state.addCategory({ name: 'Ghost', color: '#111', type: 'expense' });
+      const catId = state.state()!.categories[0].id;
+      state.addBudget({ categoryId: catId, period: 'monthly', amount: 50 });
+      state.removeCategory(catId);
+
+      expect(page.budgetAnalysis()).toEqual({ hasBudgets: false, totalCap: 0, totalSpent: 0, overBudgetCount: 0, rows: [] });
+    });
+
+    it('caps budgetAnalysisTopRows at the top count even with more budgets than that', () => {
+      for (let i = 0; i < 6; i++) {
+        state.addCategory({ name: `Cat ${i}`, color: '#111', type: 'expense' });
+      }
+      const cats = state.state()!.categories;
+      cats.forEach((c) => state.addBudget({ categoryId: c.id, period: 'monthly', amount: 100 }));
+
+      expect(page.budgetAnalysis().rows.length).toBe(6);
+      expect(page.budgetAnalysisTopRows().length).toBe(4);
+    });
+
+    it('clamps capPercent into [0, 100] so an over-budget bar never overflows its track', () => {
+      expect(page.capPercent(-10)).toBe(0);
+      expect(page.capPercent(0)).toBe(0);
+      expect(page.capPercent(50)).toBe(50);
+      expect(page.capPercent(100)).toBe(100);
+      expect(page.capPercent(250)).toBe(100);
+    });
+  });
+
   describe('investmentBreakdown', () => {
     beforeEach(() => {
       state.addBank({ name: 'Maybank', color: '#2563EB', initialCapital: 0 });
@@ -721,6 +799,28 @@ describe('DashboardPage', () => {
       expect(el.querySelector('.category-spend-card .legend-row')?.textContent).toContain('Groceries');
       const segment = el.querySelector('.category-spend-card .donut-segment');
       expect(segment?.getAttribute('stroke')).toBe('#EF4444');
+    });
+
+    it('shows the Budget Analysis empty state with no budgets, then a row with a filled bar once one is set up and spent against', () => {
+      fixture.detectChanges();
+      let el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.budget-analysis-card')?.textContent).toContain('No budgets set up yet.');
+      expect(el.querySelectorAll('.budget-row').length).toBe(0);
+
+      state.addCategory({ name: 'Groceries', color: '#EF4444', type: 'expense' });
+      const catId = state.state()!.categories[0].id;
+      state.addBudget({ categoryId: catId, period: 'monthly', amount: 100 });
+      state.addTransaction({ date: TODAY, amount: 150, type: 'expense', accountType: 'cash', categoryId: catId });
+      fixture.detectChanges();
+      el = fixture.nativeElement as HTMLElement;
+
+      const row = el.querySelector('.budget-row') as HTMLElement;
+      expect(row.textContent).toContain('Groceries');
+      expect(row.textContent).toContain('Over');
+      const fill = row.querySelector('.budget-bar-fill') as HTMLElement;
+      expect(fill.classList.contains('over')).toBe(true);
+      expect(fill.style.width).toBe('100%'); // clamped even though pctUsed is 150%
+      expect(el.querySelector('.budget-analysis-card .chip-bad')?.textContent).toContain('1 over budget');
     });
 
     it('draws an Asset Allocation donut segment per asset class, with the amount (not a percentage) in the legend', () => {

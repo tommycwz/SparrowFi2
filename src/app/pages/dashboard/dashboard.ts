@@ -4,6 +4,12 @@ import { RouterLink } from '@angular/router';
 import { StateService } from '../../core/state.service';
 import { formatMoney } from '../../core/currency.util';
 import { CURRENCIES, FixedDepositStatus, InvestmentStatus, Transaction } from '../../core/models';
+import {
+  convertBudgetAmount,
+  expenseTotalForCategoryInRange,
+  normalizeBudgetPeriod,
+  periodRange,
+} from '../../core/budget.util';
 import { fdMaturityDate, fdMaturityValue } from '../../core/fixed-deposit.util';
 import { investmentGainValue, investmentLossValue } from '../../core/investment.util';
 import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from '../../core/format.util';
@@ -27,6 +33,10 @@ const TRAILING_MONTHS = 3;
  * donut legend to a glance-able length regardless of how many categories
  * an account has. */
 const CATEGORY_DONUT_TOP_COUNT = 5;
+/** Same idea as `CATEGORY_DONUT_TOP_COUNT`, for the Budget Analysis card -
+ * how many budgeted categories it lists (worst-tracking first) before
+ * "See all" takes over, linking to the full Budget page for the rest. */
+const BUDGET_ANALYSIS_TOP_COUNT = 4;
 /** Circumference of the donut's SVG circle when its radius is 15.9155 -
  * the standard "no-library donut chart" trick, so a percentage (0-100) can
  * be used directly as a stroke-dasharray/dashoffset value. Shared by the
@@ -121,6 +131,37 @@ interface CategorySpend {
   hasExpense: boolean;
   total: number;
   segments: CategorySpendSegment[];
+}
+
+/** One budgeted category's standing this month, on the Budget Analysis
+ * card - see `budgetAnalysis` for how `capMonthly`/`spent` are derived. */
+interface BudgetAnalysisRow {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string;
+  /** The `Budget`'s cap converted to its Monthly equivalent (see
+   * `Budget`'s doc comment - a budget is one cap entered in whichever
+   * period was easiest, not necessarily Monthly). */
+  capMonthly: number;
+  spent: number;
+  /** `spent` as a percentage of `capMonthly` - deliberately *not* clamped
+   * to 100 (unlike the width `capPercent()` derives from it for the bar),
+   * so the raw number is still available for "143% used" style copy if
+   * ever needed. */
+  pctUsed: number;
+  overBudget: boolean;
+}
+
+interface BudgetAnalysis {
+  hasBudgets: boolean;
+  totalCap: number;
+  totalSpent: number;
+  overBudgetCount: number;
+  /** Every budgeted category, sorted worst-tracking-first (highest
+   * `pctUsed`) - the template only renders the first `BUDGET_ANALYSIS_TOP_COUNT`
+   * of these, with "See all" linking to the full Budget page for the rest. */
+  rows: BudgetAnalysisRow[];
 }
 
 interface AssetAllocationSlice {
@@ -692,6 +733,65 @@ export class DashboardPage {
     return { hasExpense: true, total, segments };
   });
 
+  /** How this month's actual Expense spend on each budgeted category is
+   * tracking against its cap - the Budget Analysis card's data. Every
+   * `Budget` is one cap entered in whichever period was easiest (Daily/
+   * Weekly/Monthly/Yearly - see `Budget`'s doc comment), so it's first
+   * converted to its Monthly equivalent via `convertBudgetAmount` to put
+   * every budget on the same monthly footing the rest of the Dashboard
+   * uses. Actual spend uses `periodRange('monthly', 0)` +
+   * `expenseTotalForCategoryInRange` - the exact same functions the Budget
+   * page's own Monthly tab computes with, so the figures here always agree
+   * with what that page shows; this deliberately does *not* reuse
+   * `categorySpend`'s month-key totals map, since that one only tracks the
+   * top `CATEGORY_DONUT_TOP_COUNT` categories plus a rolled-up "Other".
+   * Sorted worst-tracking-first (highest spent/cap ratio), same idea as
+   * the Budget page's own sort - the template only renders the first
+   * `BUDGET_ANALYSIS_TOP_COUNT` rows, with "See all" linking to the full
+   * Budget page for the rest. A budget whose category was deleted is
+   * silently dropped, same non-cascading behavior the Budget page itself
+   * follows. */
+  readonly budgetAnalysis = computed<BudgetAnalysis>(() => {
+    const empty: BudgetAnalysis = { hasBudgets: false, totalCap: 0, totalSpent: 0, overBudgetCount: 0, rows: [] };
+    const s = this.state.state();
+    if (!s || s.budgets.length === 0) return empty;
+
+    const [start, end] = periodRange('monthly', 0);
+    const rows: BudgetAnalysisRow[] = [];
+    for (const b of s.budgets) {
+      const category = s.categories.find((c) => c.id === b.categoryId);
+      if (!category) continue;
+
+      const capMonthly = convertBudgetAmount(b.amount, normalizeBudgetPeriod(b.period), 'monthly');
+      const spent = expenseTotalForCategoryInRange(s.transactions, b.categoryId, start, end);
+      rows.push({
+        id: b.id,
+        categoryId: b.categoryId,
+        categoryName: category.name,
+        categoryColor: category.color,
+        capMonthly,
+        spent,
+        pctUsed: capMonthly > 0 ? (spent / capMonthly) * 100 : 0,
+        overBudget: spent > capMonthly,
+      });
+    }
+    if (rows.length === 0) return empty;
+
+    rows.sort((a, b) => b.pctUsed - a.pctUsed);
+    return {
+      hasBudgets: true,
+      totalCap: rows.reduce((sum, r) => sum + r.capMonthly, 0),
+      totalSpent: rows.reduce((sum, r) => sum + r.spent, 0),
+      overBudgetCount: rows.filter((r) => r.overBudget).length,
+      rows,
+    };
+  });
+
+  /** First `BUDGET_ANALYSIS_TOP_COUNT` rows of `budgetAnalysis()` - what
+   * the card actually renders; "See all" links to the full Budget page
+   * rather than this component paginating the rest. */
+  readonly budgetAnalysisTopRows = computed(() => this.budgetAnalysis().rows.slice(0, BUDGET_ANALYSIS_TOP_COUNT));
+
   // ----- Zone 4: Portfolio -------------------------------------------------
   // Everything here is today's live state, not scoped to any reporting
   // period - moved over from Reports, where these looked identical no
@@ -772,6 +872,16 @@ export class DashboardPage {
    * height. */
   barHeightPercent(value: number, max: number): number {
     return max > 0 ? (value / max) * 100 : 0;
+  }
+
+  /** Clamps a percentage into `[0, 100]` - for a horizontal bar's *width*
+   * (unlike `barHeightPercent`, which scales against a series max), where
+   * a value past 100% (over budget) must still stop filling the track at
+   * its right edge rather than being told to render a >100% width. The
+   * unclamped number stays available separately (`BudgetAnalysisRow.pctUsed`)
+   * for any copy that wants the real "143% used" figure. */
+  capPercent(pct: number): number {
+    return Math.min(100, Math.max(0, pct));
   }
 
   // ----- Zone 5: Recent Activity -------------------------------------------

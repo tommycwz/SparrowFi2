@@ -521,6 +521,13 @@
   .pulse-grid {
     grid-template-columns: 1fr 1fr;
   }
+
+  /* Budget Analysis lists several rows rather than one donut, so it needs
+     the full card width once there's room to spare instead of squeezing
+     into half the grid alongside Savings Rate / Where It Went. */
+  .pulse-card-wide {
+    grid-column: 1 / -1;
+  }
 }
 
 .pulse-grid > .card {
@@ -643,6 +650,88 @@
   margin-top: 0.5rem;
   padding-top: 0.55rem;
   border-top: 1px solid var(--border);
+}
+
+/* ----- Budget Analysis card (Zone 3) ---------------------------------------- */
+
+.budget-analysis-head {
+  margin-bottom: 0.6rem;
+}
+
+.budget-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.budget-summary-figure {
+  font-size: 0.85rem;
+}
+
+.budget-summary-value {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.budget-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.budget-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.budget-row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.budget-row-head .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.budget-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-row-amt {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.budget-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.budget-bar-fill.over {
+  background: var(--danger);
 }
 
 /* ----- Zone 4: Accounts, split into Assets / Liabilities -------------------- */
