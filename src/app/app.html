@@ -54,6 +54,18 @@
           }
         </div>
 
+        @if (state.pendingChanges().length; as n) {
+          <button
+            type="button"
+            class="btn unsaved-btn"
+            (click)="showUnsaved.set(true)"
+            [attr.aria-label]="'Unsaved items: ' + n + '. Show list'"
+          >
+            <span class="unsaved-text">Unsaved items</span>
+            <span class="unsaved-count">{{ n }}</span>
+          </button>
+        }
+
         <button type="button" class="btn btn-primary" [disabled]="state.busy()" (click)="save()">
           <sf-icon name="save" [size]="16" />
           {{ state.busy() ? 'Saving…' : 'Save' }}
@@ -94,6 +106,10 @@
       Sign Out
     </button>
   </aside>
+
+  @if (showUnsaved()) {
+    <sf-unsaved-changes (close)="showUnsaved.set(false)" (save)="saveFromList()" />
+  }
 
   @if (toast(); as t) {
     <div class="toast" [class]="'toast-' + t.tone">{{ t.text }}</div>

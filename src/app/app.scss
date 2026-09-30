@@ -133,6 +133,39 @@
   flex-shrink: 0;
 }
 
+.unsaved-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  color: var(--warning);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.unsaved-btn:hover {
+  background: color-mix(in srgb, var(--warning) 24%, transparent);
+}
+
+.unsaved-count {
+  min-width: 1.35rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--warning);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.35rem;
+  text-align: center;
+}
+
+/* Narrow phones: just the count badge, so the Save button keeps its room. */
+@media (max-width: 479px) {
+  .unsaved-text {
+    display: none;
+  }
+}
+
 .content {
   flex: 1;
   padding: 1rem 1rem 2rem;

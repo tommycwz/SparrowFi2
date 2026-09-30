@@ -6,6 +6,7 @@ import { UpdateService } from './core/update.service';
 import { BUILD_INFO } from './core/build-info';
 import { IconComponent } from './shared/icon';
 import { LauncherPage } from './pages/launcher/launcher';
+import { UnsavedChangesComponent } from './shared/unsaved-changes';
 
 interface NavItem {
   path: string;
@@ -29,7 +30,14 @@ const NAV_ITEMS: NavItem[] = [
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent, LauncherPage],
+  imports: [
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    IconComponent,
+    LauncherPage,
+    UnsavedChangesComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './app.scss',
   templateUrl: './app.html',
@@ -49,6 +57,8 @@ export class App {
    * later still offers it. */
   readonly updateBannerDismissed = signal(false);
   readonly refreshing = signal(false);
+  /** Whether the "Unsaved items" list (opened from the topbar) is showing. */
+  readonly showUnsaved = signal(false);
 
   private toastTimer?: ReturnType<typeof setTimeout>;
 
@@ -97,6 +107,13 @@ export class App {
     }
   }
 
+  /** Save triggered from inside the "Unsaved items" list - closes the list
+   * once it succeeds (on failure it stays open so nothing looks lost). */
+  async saveFromList(): Promise<void> {
+    await this.save();
+    if (!this.state.dirty()) this.showUnsaved.set(false);
+  }
+
   /** Switches to the already-downloaded new version and reloads. Guarded
    * the same way `signOut()` is - reloading discards unsaved changes,
    * since this app has no autosave. */
@@ -124,6 +141,7 @@ export class App {
       if (!ok) return;
     }
     this.mobileNavOpen.set(false);
+    this.showUnsaved.set(false);
     this.state.signOut();
     this.cloudAuth.signOut();
   }

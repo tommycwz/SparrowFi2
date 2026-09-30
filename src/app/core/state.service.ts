@@ -19,6 +19,7 @@ import { createDefaultCategories, ensureRequiredCategories } from './default-cat
 import { fdGainValue, fdMaturityDate } from './fixed-deposit.util';
 import { anchorDayOf, nextOccurrenceDate, normalizeInterval } from './recurring.util';
 import { normalizeBudgetPeriod } from './budget.util';
+import { PendingChange, diffStates } from './pending-changes.util';
 
 export interface AccountBalance {
   kind: 'bank' | 'wallet' | 'card' | 'bucket';
@@ -50,12 +51,30 @@ const OPENING_BALANCE_NOTE = 'Initial balance';
 @Injectable({ providedIn: 'root' })
 export class StateService {
   private readonly _state = signal<AppState | null>(null);
-  private readonly _dirty = signal(false);
+  /** Snapshot of the state as it was last loaded from / saved to Supabase -
+   * what `pendingChanges` compares the live state against. `null` until the
+   * first `load()`. */
+  private readonly _saved = signal<AppState | null>(null);
   private readonly _busy = signal(false);
 
   readonly state = this._state.asReadonly();
-  readonly dirty = this._dirty.asReadonly();
   readonly busy = this._busy.asReadonly();
+
+  /** Every added/edited/deleted item since the last save, for the topbar's
+   * "Unsaved items (N)" list - see `pending-changes.util.ts`. An edit that's
+   * put back exactly as it was drops off this list again. */
+  readonly pendingChanges = computed<PendingChange[]>(() => diffStates(this._saved(), this._state()));
+
+  /** True when there's anything to save. Derived from `pendingChanges`
+   * rather than a flag set on every mutation, so undoing an edit by hand
+   * clears it. With no saved snapshot yet (a state put in place by
+   * `replaceState` before anything was ever loaded) any state counts as
+   * unsaved. */
+  readonly dirty = computed(() => {
+    if (this._state() === null) return false;
+    if (this._saved() === null) return true;
+    return this.pendingChanges().length > 0;
+  });
 
   readonly isLoaded = computed(() => this._state() !== null);
 
@@ -257,7 +276,9 @@ export class StateService {
           }
         : { ...createEmptyState(), categories: createDefaultCategories() },
     );
-    this._dirty.set(false);
+    // Snapshot *after* the backfills above, so those automatic top-ups
+    // aren't listed as changes the user made.
+    this._saved.set(this._state());
   }
 
   /** Encrypts and saves the current state back to Supabase, replacing
@@ -271,8 +292,11 @@ export class StateService {
     this._busy.set(true);
     try {
       await this.cloudData.save(toSave);
-      this._state.set(toSave);
-      this._dirty.set(false);
+      // Only adopt `toSave` if nothing was edited while the request was in
+      // flight - otherwise keep the newer live state (it stays listed as
+      // unsaved against the snapshot, rather than being silently dropped).
+      if (this._state() === current) this._state.set(toSave);
+      this._saved.set(toSave);
     } finally {
       this._busy.set(false);
     }
@@ -291,7 +315,7 @@ export class StateService {
       const empty = { ...createEmptyState(), categories: createDefaultCategories() };
       await this.cloudData.save(empty);
       this._state.set(empty);
-      this._dirty.set(false);
+      this._saved.set(empty);
     } finally {
       this._busy.set(false);
     }
@@ -301,24 +325,37 @@ export class StateService {
    * callers pair this with `CloudAuthService.signOut()`). */
   signOut(): void {
     this._state.set(null);
-    this._dirty.set(false);
+    this._saved.set(null);
   }
 
   /** Wholesale-replaces the current state, e.g. after decoding an imported
-   * legacy `.spw` file. Marks the result dirty so the caller is prompted
-   * to `save()` it. */
+   * legacy `.spw` file. Leaves the saved snapshot alone, so the result
+   * shows up as unsaved (listed item by item in `pendingChanges`) until the
+   * caller `save()`s it. */
   replaceState(state: AppState): void {
     this._state.set(state);
-    this._dirty.set(true);
+  }
+
+  /** Throws away every unsaved change, putting the state back exactly as it
+   * was last loaded/saved. No-op when there's no saved snapshot. */
+  discardChanges(): void {
+    const saved = this._saved();
+    if (saved) this._state.set(saved);
   }
 
   // ----- Mutations ----------------------------------------------------
 
+  /** `markDirty: false` is for a change that shouldn't count as unsaved
+   * work - it's applied to the saved snapshot too, so it never appears in
+   * `pendingChanges`. */
   updateState(fn: (state: AppState) => AppState, markDirty = true): void {
     const current = this._state();
     if (!current) return;
     this._state.set(fn(current));
-    if (markDirty) this._dirty.set(true);
+    if (!markDirty) {
+      const saved = this._saved();
+      if (saved) this._saved.set(fn(saved));
+    }
   }
 
   setCurrency(currency: AppState['settings']['currency']): void {
