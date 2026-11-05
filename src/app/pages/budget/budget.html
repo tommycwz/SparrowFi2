@@ -25,7 +25,9 @@
       <div class="budget-table">
         <div class="budget-row budget-row-head">
           <span>Category</span>
+          <span>{{ periodLabels[tab()] }} Budget</span>
           <span>{{ columnLabels().current }}</span>
+          <span>Remaining</span>
           <span>{{ columnLabels().previous }}</span>
           <span></span>
         </div>
@@ -34,20 +36,38 @@
           <div class="budget-row" [class.budget-row-over]="row.overBudget">
             <div class="budget-cell budget-cell-category" (click)="openEdit(row)">
               <span class="budget-dot" [style.background]="row.categoryColor"></span>
-              <div>
-                <div class="budget-cat-name">{{ row.categoryName }}</div>
-                <div class="muted small">Budget: {{ money(row.displayAmount) }}</div>
+              <div class="budget-cat-name">{{ row.categoryName }}</div>
+            </div>
+
+            <div class="budget-cell budget-cell-amount budget-cell-cap" (click)="openEdit(row)">
+              {{ money(row.displayAmount) }}
+            </div>
+
+            <div class="budget-cell budget-cell-spent" (click)="openEdit(row)">
+              <span class="budget-spent-value" [class.budget-value-over]="row.overBudget">
+                {{ money(row.currentSpent) }}
+              </span>
+              <div class="budget-bar-track" [attr.aria-label]="row.usedPercent.toFixed(0) + '% used'">
+                <div
+                  class="budget-bar-fill"
+                  [class.warn]="!row.overBudget && row.usedPercent >= 80"
+                  [class.over]="row.overBudget"
+                  [style.width.%]="capPercent(row.usedPercent)"
+                ></div>
               </div>
+              <span class="muted small">{{ row.usedPercent.toFixed(0) }}% used</span>
             </div>
 
             <div class="budget-cell budget-cell-amount" (click)="openEdit(row)">
-              <span [class.budget-value-over]="row.overBudget">{{ money(row.currentSpent) }}</span>
               @if (row.overBudget) {
+                <span class="budget-value-over">{{ money(-row.remaining) }}</span>
                 <span class="over-badge">Over</span>
+              } @else {
+                <span class="budget-value-left">{{ money(row.remaining) }}</span>
               }
             </div>
 
-            <div class="budget-cell budget-cell-amount" (click)="openEdit(row)">
+            <div class="budget-cell budget-cell-amount budget-cell-prev" (click)="openEdit(row)">
               {{ money(row.previousSpent) }}
             </div>
 

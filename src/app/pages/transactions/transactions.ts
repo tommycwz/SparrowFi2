@@ -7,6 +7,7 @@ import { formatAmountNumber, formatDateBadge, formatTimeBadge, monthKeyOf } from
 import { IconComponent } from '../../shared/icon';
 import { ModalComponent } from '../../shared/modal';
 import { ColorSelectComponent } from '../../shared/color-select';
+import { MultiSelectComponent, MultiSelectOption } from '../../shared/multi-select';
 
 interface TxForm {
   date: string;
@@ -193,19 +194,33 @@ interface ImportPreview {
   totalRows: number;
 }
 
+/** Filter value standing for "transactions with no category". */
+export const UNCATEGORIZED_FILTER = '__uncategorized__';
+
+/** The account-filter id a transaction matches: `'<type>:<id>'` for a
+ * bank/wallet/card, or just `'cash'`/`'others'` (those have no id). */
+export function accountFilterKey(t: Pick<Transaction, 'accountType' | 'accountId'>): string {
+  return t.accountType === 'cash' || t.accountType === 'others' ? t.accountType : `${t.accountType}:${t.accountId}`;
+}
+
 @Component({
   selector: 'app-transactions',
   standalone: true,
-  imports: [FormsModule, IconComponent, ModalComponent, ColorSelectComponent],
+  imports: [FormsModule, IconComponent, ModalComponent, ColorSelectComponent, MultiSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transactions.html',
   styleUrl: './transactions.scss',
 })
 export class TransactionsPage {
-  readonly filterAccount = signal<string>('all');
-  readonly filterType = signal<'all' | TransactionType>('all');
-  /** 'all' | categoryId | '__uncategorized__'. */
-  readonly filterCategory = signal<string>('all');
+  /** Multi-select filters - each is a list of ticked values, and an empty
+   * list means "All" (no filtering on that field). A transaction must match
+   * one of the ticked values in *every* non-empty filter (OR within a
+   * filter, AND across filters). */
+  /** `'bank:<id>'` / `'wallet:<id>'` / `'card:<id>'` / `'cash'` / `'others'` values. */
+  readonly filterAccount = signal<string[]>([]);
+  readonly filterType = signal<TransactionType[]>([]);
+  /** categoryIds, plus `UNCATEGORIZED_FILTER` for transactions with no category. */
+  readonly filterCategory = signal<string[]>([]);
   readonly searchQuery = signal('');
   /** 'all' shows every month; otherwise a 'YYYY-MM' key. Starts on the
    * current month so the list opens on something relevant rather than
@@ -274,30 +289,43 @@ export class TransactionsPage {
     }));
   });
 
+  /** Type filter options, each with its type color. */
+  readonly typeFilterOptions: MultiSelectOption[] = this.typeOptions.map((t) => ({
+    id: t,
+    name: TYPE_LABELS[t],
+    color: TYPE_COLORS[t],
+  }));
+
+  /** Category filter options - "Uncategorized" first, then every category
+   * under its type's heading (same grouping as `categoryFilterGroups`). */
+  readonly categoryFilterOptions = computed<MultiSelectOption[]>(() => [
+    { id: UNCATEGORIZED_FILTER, name: 'Uncategorized' },
+    ...this.categoryFilterGroups().flatMap((g) =>
+      g.categories.map((c) => ({ id: c.id, name: c.name, color: c.color, group: g.label })),
+    ),
+  ]);
+
   readonly transactions = computed(() => {
     const s = this.state.state();
     if (!s) return [];
-    const accountFilter = this.filterAccount();
+    const accounts = new Set(this.filterAccount());
     const month = this.selectedMonth();
-    const type = this.filterType();
-    const category = this.filterCategory();
+    const types = new Set<string>(this.filterType());
+    const categories = new Set(this.filterCategory());
     const query = this.searchQuery().trim().toLowerCase();
 
     let list = [...s.transactions];
-    if (accountFilter !== 'all') {
-      const [kind, id] = accountFilter.split(':');
-      list = list.filter((t) => t.accountType === kind && t.accountId === id);
+    if (accounts.size > 0) {
+      list = list.filter((t) => accounts.has(accountFilterKey(t)));
     }
     if (month !== 'all') {
       list = list.filter((t) => t.date.slice(0, 7) === month);
     }
-    if (type !== 'all') {
-      list = list.filter((t) => t.type === type);
+    if (types.size > 0) {
+      list = list.filter((t) => types.has(t.type));
     }
-    if (category === '__uncategorized__') {
-      list = list.filter((t) => !t.categoryId);
-    } else if (category !== 'all') {
-      list = list.filter((t) => t.categoryId === category);
+    if (categories.size > 0) {
+      list = list.filter((t) => categories.has(t.categoryId || UNCATEGORIZED_FILTER));
     }
     if (query) {
       list = list.filter((t) => (t.notes ?? '').toLowerCase().includes(query));
@@ -339,13 +367,17 @@ export class TransactionsPage {
     return CURRENCIES.find((c) => c.value === currency)?.symbol ?? '';
   });
 
-  readonly filterOptions = computed(() => {
+  /** Account filter options, grouped Banks / E-Wallets / Cards / Other.
+   * Ids match `accountFilterKey`. */
+  readonly filterOptions = computed<MultiSelectOption[]>(() => {
     const s = this.state.state();
     if (!s) return [];
     return [
-      ...s.banks.map((b) => ({ value: `bank:${b.id}`, label: b.name })),
-      ...s.wallets.map((w) => ({ value: `wallet:${w.id}`, label: w.name })),
-      ...s.cards.map((c) => ({ value: `card:${c.id}`, label: c.name })),
+      ...s.banks.map((b) => ({ id: `bank:${b.id}`, name: b.name, color: b.color, group: 'Banks' })),
+      ...s.wallets.map((w) => ({ id: `wallet:${w.id}`, name: w.name, color: w.color, group: 'Wallets' })),
+      ...s.cards.map((c) => ({ id: `card:${c.id}`, name: c.name, color: c.color, group: 'Cards' })),
+      { id: 'cash', name: 'Cash', group: 'Other' },
+      { id: 'others', name: 'Others', group: 'Other' },
     ];
   });
 

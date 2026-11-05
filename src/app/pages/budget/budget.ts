@@ -59,6 +59,13 @@ interface BudgetRow {
   displayAmount: number;
   previousSpent: number;
   currentSpent: number;
+  /** `displayAmount - currentSpent` - how much of this period's cap is
+   * still left to spend. Negative once over budget (the template shows the
+   * magnitude as "over" rather than a minus sign). */
+  remaining: number;
+  /** `currentSpent / displayAmount` as a percentage (unclamped - can pass
+   * 100). 0 when the cap is 0, to avoid a divide-by-zero. */
+  usedPercent: number;
   overBudget: boolean;
 }
 
@@ -111,6 +118,12 @@ export class BudgetPage {
     const current = this.expenseCategories().find((c) => c.id === currentCategoryId);
     const rest = this.unbudgetedCategories();
     return current ? [current, ...rest] : rest;
+  }
+
+  /** Clamps a percentage into `[0, 100]` for a progress bar's width, so an
+   * over-budget bar stops at the track's edge instead of overflowing it. */
+  capPercent(pct: number): number {
+    return Math.max(0, Math.min(100, pct));
   }
 
   money(amount: number): string {
@@ -176,6 +189,8 @@ export class BudgetPage {
         displayAmount,
         previousSpent,
         currentSpent,
+        remaining: displayAmount - currentSpent,
+        usedPercent: displayAmount > 0 ? (currentSpent / displayAmount) * 100 : 0,
         overBudget: currentSpent > displayAmount,
       });
     }

@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { TransactionsPage } from './transactions';
+import { TransactionsPage, UNCATEGORIZED_FILTER, accountFilterKey } from './transactions';
 import { StateService } from '../../core/state.service';
 import { createEmptyState } from '../../core/models';
 
@@ -132,6 +132,73 @@ describe('TransactionsPage', () => {
       const outGroup = groups.find((g) => g.type === 'others-out')!;
       expect(inGroup.categories.map((c) => c.name)).toEqual(['Transfer (In)']);
       expect(outGroup.categories.map((c) => c.name)).toEqual(['Transfer (Out)']);
+    });
+  });
+
+  describe('multi-select filters', () => {
+    let bankId: string;
+    let foodId: string;
+    let fuelId: string;
+
+    beforeEach(() => {
+      state.addCategory({ name: 'Food', type: 'expense', color: '#f00' });
+      state.addCategory({ name: 'Fuel', type: 'expense', color: '#0f0' });
+      const cats = state.state()!.categories;
+      foodId = cats.find((c) => c.name === 'Food')!.id;
+      fuelId = cats.find((c) => c.name === 'Fuel')!.id;
+      state.addBank({ name: 'Maybank', color: '#00f', initialCapital: 0 });
+      bankId = state.state()!.banks[0].id;
+
+      state.addTransaction({ date: TODAY, amount: 10, type: 'expense', accountType: 'cash', categoryId: foodId });
+      state.addTransaction({ date: TODAY, amount: 20, type: 'expense', accountType: 'cash', categoryId: fuelId });
+      state.addTransaction({ date: TODAY, amount: 30, type: 'income', accountType: 'cash' });
+      state.addTransaction({ date: TODAY, amount: 5, type: 'expense', accountType: 'bank', accountId: bankId, categoryId: foodId });
+    });
+
+    const amounts = () => page.transactions().filter((t) => t.amount <= 30).map((t) => t.amount).sort((a, b) => a - b);
+
+    it('shows everything when nothing is ticked', () => {
+      expect(amounts()).toEqual([5, 10, 20, 30]);
+    });
+
+    it('matches any of several ticked categories', () => {
+      page.filterCategory.set([foodId, fuelId]);
+      expect(amounts()).toEqual([5, 10, 20]);
+    });
+
+    it('can combine a category with Uncategorized', () => {
+      page.filterCategory.set([fuelId, UNCATEGORIZED_FILTER]);
+      expect(amounts()).toEqual([20, 30]);
+    });
+
+    it('matches any of several ticked types', () => {
+      page.filterType.set(['income']);
+      expect(amounts()).toEqual([30]);
+      page.filterType.set(['income', 'expense']);
+      expect(amounts()).toEqual([5, 10, 20, 30]);
+    });
+
+    it('ANDs different filters together', () => {
+      page.filterType.set(['expense']);
+      page.filterCategory.set([fuelId, UNCATEGORIZED_FILTER]);
+      expect(amounts()).toEqual([20]);
+    });
+
+    it('filters by one or several accounts, including Cash', () => {
+      page.filterAccount.set([`bank:${bankId}`]);
+      expect(amounts()).toEqual([5]);
+      page.filterAccount.set(['cash']);
+      expect(amounts()).toEqual([10, 20, 30]);
+      page.filterAccount.set(['cash', `bank:${bankId}`]);
+      expect(amounts()).toEqual([5, 10, 20, 30]);
+    });
+  });
+
+  describe('accountFilterKey', () => {
+    it('uses type:id for banks/wallets/cards and the bare type for cash/others', () => {
+      expect(accountFilterKey({ accountType: 'bank', accountId: 'b1' })).toBe('bank:b1');
+      expect(accountFilterKey({ accountType: 'cash' })).toBe('cash');
+      expect(accountFilterKey({ accountType: 'others' })).toBe('others');
     });
   });
 

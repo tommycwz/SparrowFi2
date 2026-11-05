@@ -76,7 +76,8 @@
 }
 
 /* ----- Budget table ------------------------------------------------------
-   A literal 3-column table (Category | This Month | Previous Month), plus a
+   A 5-column table (Category | Budget | This Month | Remaining | Previous
+   Month), plus a
    trailing narrow icon-only column for Delete - same "one grid column
    template shared by the header row and every data row" idea the Recurring
    page's Add/Edit lines grid uses (`.rec-lines-grid`), just applied to the
@@ -93,7 +94,7 @@
 }
 
 .budget-table {
-  min-width: 420px;
+  min-width: 640px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -102,7 +103,7 @@
 
 .budget-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.6fr) minmax(90px, 1fr) minmax(90px, 1fr) 28px;
+  grid-template-columns: minmax(130px, 1.4fr) minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(100px, 1fr) minmax(90px, 1fr) 28px;
   align-items: center;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
@@ -164,6 +165,49 @@
   color: var(--danger);
 }
 
+.budget-value-left {
+  color: var(--success);
+}
+
+/* The cap and last period's spend are reference figures, so they're
+   quieter than this period's spend and what's left of it. */
+.budget-cell-cap,
+.budget-cell-prev {
+  color: var(--text-muted);
+}
+
+.budget-cell-spent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.budget-spent-value {
+  font-weight: 700;
+}
+
+.budget-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--success);
+  transition: width 0.2s ease;
+}
+
+.budget-bar-fill.warn {
+  background: var(--warning);
+}
+
+.budget-bar-fill.over {
+  background: var(--danger);
+}
+
 .over-badge {
   font-size: 0.68rem;
   font-weight: 700;
@@ -198,7 +242,7 @@
 
 @media (max-width: 360px) {
   .budget-row {
-    grid-template-columns: minmax(120px, 1.4fr) minmax(76px, 1fr) minmax(76px, 1fr) 24px;
+    grid-template-columns: minmax(110px, 1.3fr) minmax(76px, 1fr) minmax(90px, 1.1fr) minmax(80px, 1fr) minmax(76px, 1fr) 24px;
     gap: 0.5rem;
     padding: 0.7rem 0.75rem;
   }

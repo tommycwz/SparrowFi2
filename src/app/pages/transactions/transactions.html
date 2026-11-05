@@ -90,33 +90,30 @@
       />
     </div>
 
-    <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event)">
-      <option value="all">All Types</option>
-      @for (t of typeOptions; track t) {
-        <option [value]="t">{{ typeLabels[t] }}</option>
-      }
-    </select>
+    <sf-multi-select
+      class="filter-select"
+      [options]="typeFilterOptions"
+      [values]="filterType()"
+      (valuesChange)="filterType.set($any($event))"
+      allLabel="All Types"
+      pluralNoun="types"
+    />
 
-    <select [ngModel]="filterAccount()" (ngModelChange)="filterAccount.set($event)">
-      <option value="all">All Accounts</option>
-      @for (o of filterOptions(); track o.value) {
-        <option [value]="o.value">{{ o.label }}</option>
-      }
-    </select>
+    <sf-multi-select
+      class="filter-select"
+      [options]="filterOptions()"
+      [(values)]="filterAccount"
+      allLabel="All Accounts"
+      pluralNoun="accounts"
+    />
 
-    <select [ngModel]="filterCategory()" (ngModelChange)="filterCategory.set($event)">
-      <option value="all">All Categories</option>
-      <option value="__uncategorized__">Uncategorized</option>
-      @for (g of categoryFilterGroups(); track g.type) {
-        @if (g.categories.length > 0) {
-          <optgroup [label]="g.label">
-            @for (c of g.categories; track c.id) {
-              <option [value]="c.id">{{ c.name }}</option>
-            }
-          </optgroup>
-        }
-      }
-    </select>
+    <sf-multi-select
+      class="filter-select"
+      [options]="categoryFilterOptions()"
+      [(values)]="filterCategory"
+      allLabel="All Categories"
+      pluralNoun="categories"
+    />
   </div>
 
   <div class="swipe-area" (touchstart)="onTouchStart($event)" (touchend)="onTouchEnd($event)">
